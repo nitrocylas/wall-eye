@@ -149,6 +149,32 @@ Tips:
   tolerates imperfect output, but verdict quality is only as good as the
   model.
 
+## Running on cheap hardware
+
+You do not need a gaming PC. Any old x86 laptop or a used ~$100 mini-PC
+with 8 GB RAM and no GPU runs Wall-Eye at a slower but perfectly usable
+pace - a room check takes a few minutes instead of a few seconds, which
+hardly matters when checks run every half hour. Measured with the GPU
+disabled on a real room check:
+
+| Hardware | Model to use | Check time (rough) | Notes |
+|---|---|---|---|
+| 8 GB RAM, no GPU | `qwen2.5vl:3b` | 2-4 min | Cleanest small-model verdicts in testing; respected the "a monitor and keyboard are not clutter" rule |
+| 8 GB RAM, no GPU (alternate) | `qwen3-vl:2b-instruct` | 2-4 min | Smaller download, more detailed but slightly noisier; must be the `-instruct` tag |
+| 4 GB RAM, no GPU | `qwen3-vl:2b-instruct` | 3-5 min | Close everything else; set `max_image_side: 512` and `num_ctx: 2048` |
+| Any used GPU (~$60+, 6 GB VRAM) | `qwen3-vl:8b-instruct` | seconds | The default experience |
+
+Low-spec tips:
+
+- Set `verify_items: false` - the close-up second pass roughly doubles CPU
+  work; `confirm_checks: 2` catches the false alarms instead.
+- Voice: the system voice costs nothing. The cute voice works on weak CPUs
+  too (a spoken sentence takes a few seconds). For the wake word, set
+  `listen.whisper_model: tiny.en`.
+- Tested and not recommended on CPU: `moondream` (returns empty verdicts
+  for this task), `gemma3:4b` (slow on CPU and flags normal desk items as
+  mess), `minicpm-v4.6` (does not follow the structured output format).
+
 ## Configuration highlights
 
 `config.yaml` is heavily commented and is the full reference (the tracked
