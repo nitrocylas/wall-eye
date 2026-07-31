@@ -9,6 +9,8 @@ vision model running on your own machine whether the room is a mess (or
 whatever else you tell it to watch for), and alerts you with a desktop toast, a
 phone push, and optionally a spoken message. Frames never leave your machine.
 
+![Wall-Eye dashboard](docs/dashboard.png)
+
 ## Why
 
 Cloud "AI room camera" products cost $100 or more per camera plus a monthly
@@ -256,6 +258,33 @@ Wall-Eye is a camera pointed at living space; use it accordingly.
 ```
 python -m pytest tests -q
 ```
+
+## Troubleshooting
+
+- **"Ollama is not reachable"** - start Ollama (`ollama serve`, or launch
+  the desktop app) and make sure the model is pulled:
+  `ollama pull qwen3-vl:8b-instruct`. The URL Wall-Eye uses is
+  `ollama.url` in config.yaml.
+- **Camera opens but checks fail / black frames** - another program is
+  probably holding the webcam (a browser tab, a video call, OBS). Close it
+  and hit "Check now". For IP cameras, open the `source:` URL in a browser
+  first to confirm the camera answers.
+- **Checks take minutes** - the model is running on CPU. Check the GPU is
+  being used (the Settings tab shows VRAM), try the smaller `qwen2.5vl:3b`,
+  or raise `interval_minutes` and let it be slow but infrequent.
+- **No alerts arriving** - check quiet hours first (`alerts.quiet_hours` -
+  checks still run, alerts stay silent), then `confirm_checks` (a condition
+  must hold that many checks in a row before the first alert).
+- **Wake word does not react** - it needs the optional packages
+  (`pip install faster-whisper sounddevice`) and the checkbox enabled in
+  Settings; say the name and the request in one sentence ("Wall-E, check
+  the room"). The first use downloads the speech model, so give it a
+  minute.
+- **Cute voice sounds like the plain system voice** - install the optional
+  engine: `pip install kokoro-onnx` (the model file downloads on first
+  use, about 340 MB).
+- **A crash dialog appeared** - click "Copy details" and paste it into a
+  GitHub issue; that report has everything needed to fix it.
 
 ## Limitations
 
