@@ -28,3 +28,6 @@ secrets.h
 # The live config is created from config.example.yaml on first run and may
 # contain the private ntfy topic (which acts as a password) — never commit it.
 config.yaml
+
+# Downloaded TTS model files
+models/

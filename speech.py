@@ -34,6 +34,15 @@ log = logging.getLogger("walleye")
 VOICE_OFF = "off"
 VOICE_SYSTEM = "system"
 VOICE_WALL_E = "wall-e"
+VOICE_CUTE = "cute"
+
+# Kokoro (the optional neural TTS behind the "cute" voice, Apache-2.0).
+# Model files are fetched once into models/ on first use.
+KOKORO_MODEL_URL = ("https://github.com/thewh1teagle/kokoro-onnx/releases/"
+                    "download/model-files-v1.0/kokoro-v1.0.onnx")
+KOKORO_VOICES_URL = ("https://github.com/thewh1teagle/kokoro-onnx/releases/"
+                     "download/model-files-v1.0/voices-v1.0.bin")
+DEFAULT_KOKORO_VOICE = "af_heart"
 
 DEFAULT_RATE_WPM = 180
 
@@ -174,8 +183,108 @@ def _speak_system(text: str, cfg: dict) -> None:
     engine.runAndWait()
 
 
-def _speak_wall_e(text: str, cfg: dict) -> None:
-    """Render TTS to a wav, run the robot DSP chain, and play the result."""
+# ---------------------------------------------------------------------------
+# Kokoro neural TTS (optional, powers the "cute" voice)
+# ---------------------------------------------------------------------------
+
+_kokoro = None
+_kokoro_lock = threading.Lock()
+
+
+def kokoro_installed() -> bool:
+    """True when the optional kokoro-onnx package is importable."""
+    import importlib.util
+    return importlib.util.find_spec("kokoro_onnx") is not None
+
+
+def _models_dir() -> str:
+    from paths import ROOT
+    return os.path.join(str(ROOT), "models")
+
+
+def _fetch(url: str, dest: str) -> None:
+    """Download a model file once, atomically (partial downloads never end
+    up under the final name)."""
+    import urllib.request
+    log.info("Downloading %s (one-time, this can take a few minutes)", url)
+    part = dest + ".part"
+    urllib.request.urlretrieve(url, part)
+    os.replace(part, dest)
+
+
+def _kokoro_engine():
+    """Load Kokoro once per process; download its model files if needed."""
+    global _kokoro
+    with _kokoro_lock:
+        if _kokoro is None:
+            from kokoro_onnx import Kokoro
+            models = _models_dir()
+            os.makedirs(models, exist_ok=True)
+            model = os.path.join(models, "kokoro-v1.0.onnx")
+            voices = os.path.join(models, "voices-v1.0.bin")
+            if not os.path.exists(model):
+                _fetch(KOKORO_MODEL_URL, model)
+            if not os.path.exists(voices):
+                _fetch(KOKORO_VOICES_URL, voices)
+            _kokoro = Kokoro(model, voices)
+        return _kokoro
+
+
+def _synth_kokoro(text: str, cfg: dict):
+    """Render text with Kokoro. Returns (float32 samples, sample rate)."""
+    voice = cfg.get("kokoro_voice", DEFAULT_KOKORO_VOICE)
+    samples, sr = _kokoro_engine().create(text, voice=voice, speed=1.0)
+    return np.asarray(samples, dtype=np.float32), int(sr)
+
+
+def _speak_cute(text: str, cfg: dict) -> None:
+    """The friendly neural voice: Kokoro rendered to a wav and played."""
+    samples, sr = _synth_kokoro(text, cfg)
+    _play_samples(samples, sr)
+
+
+def _play_samples(samples, sr: int) -> None:
+    tmp_dir = tempfile.mkdtemp(prefix="walleye_tts_")
+    path = os.path.join(tmp_dir, "out.wav")
+    try:
+        _write_wav(path, samples, sr)
+        _play_wav(path)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        try:
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
+
+
+def resolve_backend(voice: str, kokoro_ok: bool) -> str:
+    """Pick the synthesis backend for a configured voice name.
+
+    Pure so it is unit-testable. Returns one of: "off", "system",
+    "cute", "wall-e-kokoro", "wall-e-system". The wall-e effect prefers a
+    Kokoro base when available because the robotized neural voice sounds
+    far better than robotized platform TTS; without Kokoro both fancy
+    voices degrade gracefully (wall-e to platform TTS + DSP, cute to the
+    plain system voice).
+    """
+    if voice == VOICE_OFF:
+        return "off"
+    if voice == VOICE_CUTE:
+        return "cute" if kokoro_ok else "system"
+    if voice == VOICE_WALL_E:
+        return "wall-e-kokoro" if kokoro_ok else "wall-e-system"
+    return "system"
+
+
+def _speak_wall_e(text: str, cfg: dict, use_kokoro: bool = False) -> None:
+    """Render TTS, run the robot DSP chain, and play the result."""
+    if use_kokoro:
+        samples, sr = _synth_kokoro(text, cfg)
+        _play_samples(robotize(samples, sr), sr)
+        return
     tmp_dir = tempfile.mkdtemp(prefix="walleye_tts_")
     raw_path = os.path.join(tmp_dir, "raw.wav")
     fx_path = os.path.join(tmp_dir, "robot.wav")
@@ -232,9 +341,15 @@ def speak(text: str, cfg: dict) -> bool:
     """Say `text` using the configured voice. Non-blocking.
 
     cfg keys (all optional):
-        voice       "off" | "system" | "wall-e"   (default "system")
-        voice_name  substring matched against installed TTS voice names
-        rate        speaking rate in words per minute
+        voice         "off" | "system" | "wall-e" | "cute"  (default "system")
+        voice_name    substring matched against installed TTS voice names
+        rate          speaking rate in words per minute (system voice only)
+        kokoro_voice  Kokoro voice id for "cute"/"wall-e" (default af_heart)
+
+    "cute" and the improved "wall-e" use the optional Kokoro neural TTS
+    (pip install kokoro-onnx; model files download once). Without it,
+    "cute" falls back to the system voice and "wall-e" to the platform
+    TTS + robot DSP.
 
     Returns True if the request was accepted, False if it was dropped
     (empty text, voice off, or another utterance is still playing).
@@ -249,13 +364,22 @@ def speak(text: str, cfg: dict) -> bool:
         log.debug("Dropping overlapping speech request: %r", text[:60])
         return False
 
+    backend = resolve_backend(voice, kokoro_installed())
+    if voice == VOICE_CUTE and backend == "system":
+        log.warning("The cute voice needs kokoro-onnx "
+                    "(pip install kokoro-onnx); using the system voice")
+    elif voice not in (VOICE_SYSTEM, VOICE_WALL_E, VOICE_CUTE):
+        log.warning("Unknown voice %r; using system voice", voice)
+
     def worker() -> None:
         try:
-            if voice == VOICE_WALL_E:
+            if backend == "cute":
+                _speak_cute(text, cfg)
+            elif backend == "wall-e-kokoro":
+                _speak_wall_e(text, cfg, use_kokoro=True)
+            elif backend == "wall-e-system":
                 _speak_wall_e(text, cfg)
             else:
-                if voice != VOICE_SYSTEM:
-                    log.warning("Unknown voice %r; using system voice", voice)
                 _speak_system(text, cfg)
         except Exception as exc:
             # Voice output is a convenience; never let it take the app down.

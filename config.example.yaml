@@ -77,8 +77,12 @@ alerts:
 voice:
   voice: system                 # system  = your OS text-to-speech voice
                                 # wall-e  = robot-styled voice effect
+                                # cute    = warm neural voice (Kokoro; needs
+                                #           "pip install kokoro-onnx", model
+                                #           downloads once, ~340 MB)
                                 # off     = no spoken alerts
-  rate: 175                     # words per minute
+  rate: 175                     # words per minute (system voice only)
+  # kokoro_voice: af_heart      # OPTIONAL - Kokoro voice id for cute/wall-e
 
 # Optional voice wake word: say "Wall-E, what do you see?" out loud and the
 # app answers through its voice. Fully local (mic -> faster-whisper on this

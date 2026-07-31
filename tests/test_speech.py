@@ -11,6 +11,24 @@ import pytest
 import speech
 
 
+class TestBackendSelection:
+    def test_off_is_off_regardless_of_kokoro(self):
+        assert speech.resolve_backend("off", True) == "off"
+        assert speech.resolve_backend("off", False) == "off"
+
+    def test_cute_needs_kokoro(self):
+        assert speech.resolve_backend("cute", True) == "cute"
+        assert speech.resolve_backend("cute", False) == "system"
+
+    def test_wall_e_prefers_kokoro_base(self):
+        assert speech.resolve_backend("wall-e", True) == "wall-e-kokoro"
+        assert speech.resolve_backend("wall-e", False) == "wall-e-system"
+
+    def test_unknown_and_system_map_to_system(self):
+        assert speech.resolve_backend("system", True) == "system"
+        assert speech.resolve_backend("dalek-9000", True) == "system"
+
+
 SR = 22050
 
 

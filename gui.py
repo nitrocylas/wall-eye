@@ -2399,9 +2399,11 @@ class Dashboard(QMainWindow):
         self.voice_pick.addItem("Off", speech.VOICE_OFF)
         self.voice_pick.addItem("System voice", speech.VOICE_SYSTEM)
         self.voice_pick.addItem("Wall-E voice", speech.VOICE_WALL_E)
+        self.voice_pick.addItem("Cute voice", speech.VOICE_CUTE)
         self.voice_pick.setToolTip(
-            "System voice uses your OS text-to-speech. Wall-E voice runs the "
-            "same speech through a robot effect. All local.")
+            "System voice uses your OS text-to-speech. Wall-E voice adds a "
+            "robot effect. Cute voice uses the Kokoro neural TTS "
+            "(pip install kokoro-onnx; the model downloads once). All local.")
         cur_voice = self.engine.cfg.get("voice", {}).get("voice",
                                                          speech.VOICE_SYSTEM)
         vi = self.voice_pick.findData(cur_voice)

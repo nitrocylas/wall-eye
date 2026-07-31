@@ -36,10 +36,11 @@ in your PC running a free local vision model through
 - **Multi-camera tasks** - one task can watch several angles at once, each
   with its own reference photo; it alerts if any camera sees a problem.
 - **Alerts everywhere** - Windows toast, phone push via
-  [ntfy](https://ntfy.sh) (free, self-hostable), and spoken alerts using
-  either your system text-to-speech voice or the built-in "wall-e" robot
-  voice (a numpy DSP chain: pitch shift, ring modulation, soft clip). Quiet
-  hours supported.
+  [ntfy](https://ntfy.sh) (free, self-hostable), and spoken alerts in your
+  choice of voice: your system text-to-speech, a warm "cute" neural voice
+  (Kokoro, optional one-time model download), or the "wall-e" robot voice
+  (a numpy DSP chain - pitch shift, ring modulation, soft clip - layered on
+  the best available base voice). Quiet hours supported.
 - **Reminders and planner** - timed reminders, to-do and shopping checklists,
   quick notes, daily habits with streaks, a cleanup checklist, and a focus
   timer, all in the desktop dashboard.
@@ -146,7 +147,9 @@ Other knobs worth knowing:
 - `alerts.confirm_checks` - only alert once a condition holds N checks in a
   row.
 - `alerts.quiet_hours` - no alerts in this window (checks still run).
-- `voice.voice` - `system`, `wall-e`, or `off`.
+- `voice.voice` - `system`, `cute`, `wall-e`, or `off`. The cute voice needs
+  `pip install kokoro-onnx` (the model downloads once, about 340 MB); it
+  also upgrades the wall-e voice's base audio.
 - Per-camera or per-task `zone` - crop to a region of the frame.
 
 After editing, right-click the tray icon and choose "Reload config".
