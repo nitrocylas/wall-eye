@@ -327,6 +327,12 @@ python -m pytest tests -q
   this project only borrows an affectionate pun), nor with Ollama, Alibaba
   (Qwen), or any camera or smart-home vendor.
 
+## Support
+
+Wall-Eye is free and always will be. If it replaced a camera subscription
+for you and you feel like saying thanks, you can
+[buy me a coffee on Ko-fi](https://ko-fi.com/nitrocylas).
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
