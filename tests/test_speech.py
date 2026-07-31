@@ -11,6 +11,24 @@ import pytest
 import speech
 
 
+class TestPhoneticize:
+    def test_respells_the_name_for_speech(self):
+        assert speech.phoneticize("Wall-Eye online.") == "Wally online."
+        assert speech.phoneticize("wall eye is watching") == \
+            "Wally is watching"
+        assert speech.phoneticize("Ask WALL-EYE anything") == \
+            "Ask Wally anything"
+
+    def test_possessive_and_plural_forms(self):
+        assert speech.phoneticize("Wall-Eyes cameras") == "Wallies cameras"
+
+    def test_leaves_other_words_alone(self):
+        assert speech.phoneticize("the wallpaper and my eye") == \
+            "the wallpaper and my eye"
+        assert speech.phoneticize("eyewall of the storm") == \
+            "eyewall of the storm"
+
+
 class TestBackendSelection:
     def test_off_is_off_regardless_of_kokoro(self):
         assert speech.resolve_backend("off", True) == "off"

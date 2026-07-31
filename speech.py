@@ -21,6 +21,7 @@ speaking is dropped rather than queued, so alerts never pile up.
 
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -260,6 +261,19 @@ def _play_samples(samples, sr: int) -> None:
             pass
 
 
+# TTS engines read "Wall-Eye" literally as "wall EYE". Respell the name in
+# text that is about to be SPOKEN so every engine says it like WALL-E; the
+# on-screen spelling is never touched.
+_NAME_RE = re.compile(r"\bwall[\s-]?eyes?\b", re.IGNORECASE)
+
+
+def phoneticize(text: str) -> str:
+    """Respell the app's name for correct pronunciation ("Wally")."""
+    def fix(match: "re.Match[str]") -> str:
+        return "Wallies" if match.group(0).lower().endswith("s") else "Wally"
+    return _NAME_RE.sub(fix, text)
+
+
 def resolve_backend(voice: str, kokoro_ok: bool) -> str:
     """Pick the synthesis backend for a configured voice name.
 
@@ -364,6 +378,7 @@ def speak(text: str, cfg: dict) -> bool:
         log.debug("Dropping overlapping speech request: %r", text[:60])
         return False
 
+    text = phoneticize(text)
     backend = resolve_backend(voice, kokoro_installed())
     if voice == VOICE_CUTE and backend == "system":
         log.warning("The cute voice needs kokoro-onnx "
