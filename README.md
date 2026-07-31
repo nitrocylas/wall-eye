@@ -56,7 +56,7 @@ in your PC running a free local vision model through
 - **Alerts everywhere** - Windows toast, phone push via
   [ntfy](https://ntfy.sh) (free, self-hostable), and spoken alerts in your
   choice of voice: your system text-to-speech, a warm "cute" neural voice
-  (Kokoro, optional one-time model download), or the "wall-e" robot voice
+  (Kokoro, optional one-time model download), or a "robot" voice
   (a numpy DSP chain - pitch shift, ring modulation, soft clip - layered on
   the best available base voice). Quiet hours supported.
 - **Reminders and planner** - timed reminders, to-do and shopping checklists,
@@ -167,9 +167,9 @@ Other knobs worth knowing:
 - `alerts.confirm_checks` - only alert once a condition holds N checks in a
   row.
 - `alerts.quiet_hours` - no alerts in this window (checks still run).
-- `voice.voice` - `system`, `cute`, `wall-e`, or `off`. The cute voice needs
+- `voice.voice` - `system`, `cute`, `robot`, or `off`. The cute voice needs
   `pip install kokoro-onnx` (the model downloads once, about 340 MB); it
-  also upgrades the wall-e voice's base audio.
+  also upgrades the robot voice's base audio.
 - Per-camera or per-task `zone` - crop to a region of the frame.
 
 After editing, right-click the tray icon and choose "Reload config".
@@ -200,18 +200,18 @@ pip install faster-whisper sounddevice
 
 Then just talk to it:
 
-- "Wall-E, what do you see?" - it looks through the camera and describes
+- "the robot voiceye, what do you see?" - it looks through the camera and describes
   the room out loud.
-- "Wall-E, check the room" - runs a mess check and speaks the verdict.
-- "Wall-E, how does it look?" - repeats the latest verdict.
-- "Wall-E, what time is it?" - the classics work too.
+- "the robot voiceye, check the room" - runs a mess check and speaks the verdict.
+- "the robot voiceye, how does it look?" - repeats the latest verdict.
+- "the robot voiceye, what time is it?" - the classics work too.
 - Anything else after the name becomes a chat message, answered in the chat
   panel and spoken aloud.
 
-It answers in whichever voice you picked in settings - including the
-robot-styled "wall-e" voice, which is obviously the correct choice.
-"Wally", "wall eye" and similar pronunciations are recognized as the wake
-word; say the name, then the request, in one sentence.
+It answers in whichever voice you picked in settings - the robot voice is
+obviously the correct choice. "Wally", "wall eye" and similar
+pronunciations are recognized as the wake word; say the name, then the
+request, in one sentence.
 
 ## Phone notifications
 
@@ -295,7 +295,7 @@ python -m pytest tests -q
   must hold that many checks in a row before the first alert).
 - **Wake word does not react** - it needs the optional packages
   (`pip install faster-whisper sounddevice`) and the checkbox enabled in
-  Settings; say the name and the request in one sentence ("Wall-E, check
+  Settings; say the name and the request in one sentence ("the robot voiceye, check
   the room"). The first use downloads the speech model, so give it a
   minute.
 - **Cute voice sounds like the plain system voice** - install the optional
@@ -338,10 +338,10 @@ python -m pytest tests -q
   interrupted or applied to incompatible hardware, so check your board's
   pinout first. If you use a USB webcam or IP camera, no flashing is
   involved and this bullet does not concern you.
-- **No affiliation.** Wall-Eye is a hobby project. It is not affiliated with,
-  endorsed by, or connected to Disney/Pixar (WALL-E is their trademark and
-  this project only borrows an affectionate pun), nor with Ollama, Alibaba
-  (Qwen), or any camera or smart-home vendor.
+- **No affiliation.** Wall-Eye is a hobby project. The name is a plain pun
+  on a wall-mounted eye. It is not affiliated with, endorsed by, or
+  connected to any film studio, nor with Ollama, Alibaba (Qwen), or any
+  camera or smart-home vendor.
 
 ## Support
 

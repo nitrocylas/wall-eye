@@ -76,15 +76,15 @@ alerts:
 
 voice:
   voice: system                 # system  = your OS text-to-speech voice
-                                # wall-e  = robot-styled voice effect
+                                # robot  = robot-styled voice effect
                                 # cute    = warm neural voice (Kokoro; needs
                                 #           "pip install kokoro-onnx", model
                                 #           downloads once, ~340 MB)
                                 # off     = no spoken alerts
   rate: 175                     # words per minute (system voice only)
-  # kokoro_voice: af_heart      # OPTIONAL - Kokoro voice id for cute/wall-e
+  # kokoro_voice: af_heart      # OPTIONAL - Kokoro voice id for cute/robot
 
-# Optional voice wake word: say "Wall-E, what do you see?" out loud and the
+# Optional voice wake word: say "the robot voiceye, what do you see?" out loud and the
 # app answers through its voice. Fully local (mic -> faster-whisper on this
 # PC); nothing is sent anywhere. Needs two extra packages:
 #     pip install faster-whisper sounddevice
@@ -94,9 +94,9 @@ listen:
                                 # fastest option (less accurate); base.en is
                                 # a good balance. Downloaded once on first use.
   # wake_word:                  # OPTIONAL - override the accepted names.
-  # - wall-e                    # Defaults already cover "wall-e", "wall e",
-  # - wally                     # "walle", "wally", "wall-eye", "wall eye"
-                                # and "wally e".
+  # - wally                     # Defaults already cover the common ways the
+  # - wall eye                  # name gets heard: "wally", "walle",
+                                # "wall e", "wall eye", "wall-eye", "wali".
 
 # ---------------------------------------------------------------------------
 # Watch tasks. Each one is checked on its own schedule with its own prompt.

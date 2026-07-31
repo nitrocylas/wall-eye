@@ -39,8 +39,8 @@ class TestBackendSelection:
         assert speech.resolve_backend("cute", False) == "system"
 
     def test_wall_e_prefers_kokoro_base(self):
-        assert speech.resolve_backend("wall-e", True) == "wall-e-kokoro"
-        assert speech.resolve_backend("wall-e", False) == "wall-e-system"
+        assert speech.resolve_backend("robot", True) == "robot-kokoro"
+        assert speech.resolve_backend("robot", False) == "robot-system"
 
     def test_unknown_and_system_map_to_system(self):
         assert speech.resolve_backend("system", True) == "system"

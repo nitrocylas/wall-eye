@@ -6,7 +6,7 @@ Three voices, picked by the "voice" key of the config passed to speak():
     system  - any installed pyttsx3/SAPI voice. Optional keys:
                 voice_name: substring matched against installed voice names
                 rate:       words per minute
-    wall-e  - a fun robotic voice: the system TTS is rendered to a wav file,
+    robot  - a fun robotic voice: the system TTS is rendered to a wav file,
               then post-processed with numpy (pitch shift, ring modulation,
               soft clip, normalize) and played back.
 
@@ -34,7 +34,7 @@ log = logging.getLogger("walleye")
 
 VOICE_OFF = "off"
 VOICE_SYSTEM = "system"
-VOICE_WALL_E = "wall-e"
+VOICE_ROBOT = "robot"
 VOICE_CUTE = "cute"
 
 # Kokoro (the optional neural TTS behind the "cute" voice, Apache-2.0).
@@ -47,11 +47,11 @@ DEFAULT_KOKORO_VOICE = "af_heart"
 
 DEFAULT_RATE_WPM = 180
 
-# Tuning for the "wall-e" robot voice.
-WALL_E_PITCH_FACTOR = 1.3    # resample factor; >1 raises the pitch
-WALL_E_RING_FREQ_HZ = 35.0   # tremolo/ring carrier - low enough to buzz, not warble
-WALL_E_RING_DEPTH = 0.35     # 0 = no effect, 1 = full amplitude swing
-WALL_E_CLIP_DRIVE = 2.0      # tanh drive; adds a touch of speaker grit
+# Tuning for the "robot" robot voice.
+ROBOT_PITCH_FACTOR = 1.3    # resample factor; >1 raises the pitch
+ROBOT_RING_FREQ_HZ = 35.0   # tremolo/ring carrier - low enough to buzz, not warble
+ROBOT_RING_DEPTH = 0.35     # 0 = no effect, 1 = full amplitude swing
+ROBOT_CLIP_DRIVE = 2.0      # tanh drive; adds a touch of speaker grit
 NORMALIZE_PEAK = 0.9         # leave headroom so playback never hard-clips
 
 
@@ -91,7 +91,7 @@ def ring_mod(samples: np.ndarray, sr: int, freq: float, depth: float) -> np.ndar
     return samples * carrier
 
 
-def soft_clip(samples: np.ndarray, drive: float = WALL_E_CLIP_DRIVE) -> np.ndarray:
+def soft_clip(samples: np.ndarray, drive: float = ROBOT_CLIP_DRIVE) -> np.ndarray:
     """Gentle tanh saturation.
 
     tanh bounds every output sample strictly inside (-1, 1) no matter how
@@ -114,9 +114,9 @@ def normalize(samples: np.ndarray, peak: float = NORMALIZE_PEAK) -> np.ndarray:
 
 
 def robotize(samples: np.ndarray, sr: int) -> np.ndarray:
-    """Full wall-e chain: pitch up, ring-modulate, soft-clip, normalize."""
-    out = pitch_shift(samples, sr, WALL_E_PITCH_FACTOR)
-    out = ring_mod(out, sr, WALL_E_RING_FREQ_HZ, WALL_E_RING_DEPTH)
+    """Full robot chain: pitch up, ring-modulate, soft-clip, normalize."""
+    out = pitch_shift(samples, sr, ROBOT_PITCH_FACTOR)
+    out = ring_mod(out, sr, ROBOT_RING_FREQ_HZ, ROBOT_RING_DEPTH)
     out = soft_clip(out)
     return normalize(out)
 
@@ -262,8 +262,8 @@ def _play_samples(samples, sr: int) -> None:
 
 
 # TTS engines read "Wall-Eye" literally as "wall EYE". Respell the name in
-# text that is about to be SPOKEN so every engine says it like WALL-E; the
-# on-screen spelling is never touched.
+# text that is about to be SPOKEN so it comes out as one word, "wally";
+# the on-screen spelling is never touched.
 _NAME_RE = re.compile(r"\bwall[\s-]?eyes?\b", re.IGNORECASE)
 
 
@@ -278,18 +278,18 @@ def resolve_backend(voice: str, kokoro_ok: bool) -> str:
     """Pick the synthesis backend for a configured voice name.
 
     Pure so it is unit-testable. Returns one of: "off", "system",
-    "cute", "wall-e-kokoro", "wall-e-system". The wall-e effect prefers a
+    "cute", "robot-kokoro", "robot-system". The robot effect prefers a
     Kokoro base when available because the robotized neural voice sounds
     far better than robotized platform TTS; without Kokoro both fancy
-    voices degrade gracefully (wall-e to platform TTS + DSP, cute to the
+    voices degrade gracefully (robot to platform TTS + DSP, cute to the
     plain system voice).
     """
     if voice == VOICE_OFF:
         return "off"
     if voice == VOICE_CUTE:
         return "cute" if kokoro_ok else "system"
-    if voice == VOICE_WALL_E:
-        return "wall-e-kokoro" if kokoro_ok else "wall-e-system"
+    if voice == VOICE_ROBOT:
+        return "robot-kokoro" if kokoro_ok else "robot-system"
     return "system"
 
 
@@ -355,14 +355,14 @@ def speak(text: str, cfg: dict) -> bool:
     """Say `text` using the configured voice. Non-blocking.
 
     cfg keys (all optional):
-        voice         "off" | "system" | "wall-e" | "cute"  (default "system")
+        voice         "off" | "system" | "robot" | "cute"  (default "system")
         voice_name    substring matched against installed TTS voice names
         rate          speaking rate in words per minute (system voice only)
-        kokoro_voice  Kokoro voice id for "cute"/"wall-e" (default af_heart)
+        kokoro_voice  Kokoro voice id for "cute"/"robot" (default af_heart)
 
-    "cute" and the improved "wall-e" use the optional Kokoro neural TTS
+    "cute" and the improved "robot" use the optional Kokoro neural TTS
     (pip install kokoro-onnx; model files download once). Without it,
-    "cute" falls back to the system voice and "wall-e" to the platform
+    "cute" falls back to the system voice and "robot" to the platform
     TTS + robot DSP.
 
     Returns True if the request was accepted, False if it was dropped
@@ -383,16 +383,16 @@ def speak(text: str, cfg: dict) -> bool:
     if voice == VOICE_CUTE and backend == "system":
         log.warning("The cute voice needs kokoro-onnx "
                     "(pip install kokoro-onnx); using the system voice")
-    elif voice not in (VOICE_SYSTEM, VOICE_WALL_E, VOICE_CUTE):
+    elif voice not in (VOICE_SYSTEM, VOICE_ROBOT, VOICE_CUTE):
         log.warning("Unknown voice %r; using system voice", voice)
 
     def worker() -> None:
         try:
             if backend == "cute":
                 _speak_cute(text, cfg)
-            elif backend == "wall-e-kokoro":
+            elif backend == "robot-kokoro":
                 _speak_wall_e(text, cfg, use_kokoro=True)
-            elif backend == "wall-e-system":
+            elif backend == "robot-system":
                 _speak_wall_e(text, cfg)
             else:
                 _speak_system(text, cfg)

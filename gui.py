@@ -1202,7 +1202,7 @@ class Dashboard(QMainWindow):
         self.log_line(f"{APP_NAME} online. Watching "
                       f"{len(engine.tasks())} task(s).")
 
-        # Optional voice wake word ("Wall-E, ..."), off by default. The
+        # Optional voice wake word ("the robot voiceye, ..."), off by default. The
         # listener thread reports through VoiceBridge signals so every UI
         # touch happens on the GUI thread.
         self.voice_bridge = VoiceBridge()
@@ -2398,10 +2398,10 @@ class Dashboard(QMainWindow):
         self.voice_pick = QComboBox()
         self.voice_pick.addItem("Off", speech.VOICE_OFF)
         self.voice_pick.addItem("System voice", speech.VOICE_SYSTEM)
-        self.voice_pick.addItem("Wall-E voice", speech.VOICE_WALL_E)
+        self.voice_pick.addItem("Robot voice", speech.VOICE_ROBOT)
         self.voice_pick.addItem("Cute voice", speech.VOICE_CUTE)
         self.voice_pick.setToolTip(
-            "System voice uses your OS text-to-speech. Wall-E voice adds a "
+            "System voice uses your OS text-to-speech. Robot voice adds a "
             "robot effect. Cute voice uses the Kokoro neural TTS "
             "(pip install kokoro-onnx; the model downloads once). All local.")
         cur_voice = self.engine.cfg.get("voice", {}).get("voice",
@@ -2417,9 +2417,9 @@ class Dashboard(QMainWindow):
         g3.addWidget(test_voice, 0, 2)
 
         g3.addWidget(fl("Wake word"), 1, 0)
-        self.listen_chk = QCheckBox("Voice wake word (say 'Wall-E, ...')")
+        self.listen_chk = QCheckBox("Voice wake word (say 'the robot voiceye, ...')")
         self.listen_chk.setToolTip(
-            "Always-on local listening: say \"Wall-E, what do you see?\" and "
+            "Always-on local listening: say \"the robot voiceye, what do you see?\" and "
             f"{APP_NAME} answers out loud. Nothing leaves this PC.")
         self.listen_chk.setChecked(
             bool((self.engine.cfg.get("listen") or {}).get("enabled", False)))
@@ -2598,7 +2598,7 @@ class Dashboard(QMainWindow):
         for t in doc.get("tasks", []):
             if t.get("enabled", True):
                 t["interval_minutes"] = self.interval_spin.value()
-        # voice choice (off / system / wall-e); rate & voice_name stay hand-edited
+        # voice choice (off / system / robot); rate & voice_name stay hand-edited
         vcfg = self.engine.cfg.get("voice", {})
         if "voice" in vcfg:
             doc.setdefault("voice", {})["voice"] = vcfg["voice"]
@@ -2693,7 +2693,7 @@ class Dashboard(QMainWindow):
 
     # ---------- voice wake word ----------
     def _start_wake_listener(self):
-        """Create + start the always-on 'Wall-E, ...' listener. Safe when the
+        """Create + start the always-on 'the robot voiceye, ...' listener. Safe when the
         optional deps are missing (it logs a hint and stays off)."""
         if self.wake_listener is not None:
             self.wake_listener.stop()
@@ -2708,7 +2708,7 @@ class Dashboard(QMainWindow):
             aliases=aliases)
         self.wake_listener.start()
         if self.wake_listener._thread is not None:
-            self.log_line("Voice wake word on - say \"Wall-E, ...\"")
+            self.log_line("Voice wake word on - say \"the robot voiceye, ...\"")
         else:
             self.log_line("Voice wake word needs extras: "
                           "<b>pip install faster-whisper sounddevice</b>")
@@ -2729,7 +2729,7 @@ class Dashboard(QMainWindow):
             self.log_line("Voice wake word off.")
 
     def _on_voice_command(self, command, arg):
-        """A spoken 'Wall-E, ...' command, already on the GUI thread."""
+        """A spoken 'the robot voiceye, ...' command, already on the GUI thread."""
         if command == "chat":
             self._voice_chat(arg)
         elif command == "check":
