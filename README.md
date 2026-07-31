@@ -85,8 +85,20 @@ in your PC running a free local vision model through
 
 ## Quick start
 
+**No-Python route:** grab the portable build from
+[Releases](https://github.com/nitrocylas/wall-eye/releases), unzip it
+anywhere, install [Ollama](https://ollama.com) and pull a model
+(`ollama pull qwen3-vl:8b-instruct`), then run `Wall-Eye.exe`. Windows
+SmartScreen will warn about an unrecognized app the first time - that is
+what unsigned hobby software looks like; click "More info" then "Run
+anyway", or use the from-source route below if you'd rather not. The
+portable build keeps its config next to the exe, includes the voice
+extras, and you can switch models from the Settings tab.
+
+**From source:**
+
 ```
-git clone <this repo>
+git clone https://github.com/nitrocylas/wall-eye
 cd wall-eye
 pip install -r requirements.txt
 ollama pull qwen3-vl:8b-instruct
@@ -131,9 +143,9 @@ Tips:
   detection, not new features.
 - `ollama.ground_model` (optional) can name a second model used only to
   place bounding boxes; leave it empty to use the main model's own boxes.
-- If a model gives chatty or malformed replies, lower `interval_minutes`
-  expectations and try another - the app tolerates imperfect output, but
-  verdict quality is only as good as the model.
+- If a model gives chatty or malformed replies, try another one - the app
+  tolerates imperfect output, but verdict quality is only as good as the
+  model.
 
 ## Configuration highlights
 
@@ -172,7 +184,7 @@ Other knobs worth knowing:
   also upgrades the robot voice's base audio.
 - Per-camera or per-task `zone` - crop to a region of the frame.
 
-After editing, right-click the tray icon and choose "Reload config".
+After editing, hit "Reload config" on the Settings tab (or restart the app).
 
 ## ESP32 Wi-Fi camera
 
@@ -200,11 +212,11 @@ pip install faster-whisper sounddevice
 
 Then just talk to it:
 
-- "the robot voiceye, what do you see?" - it looks through the camera and describes
+- "Wall-Eye, what do you see?" - it looks through the camera and describes
   the room out loud.
-- "the robot voiceye, check the room" - runs a mess check and speaks the verdict.
-- "the robot voiceye, how does it look?" - repeats the latest verdict.
-- "the robot voiceye, what time is it?" - the classics work too.
+- "Wall-Eye, check the room" - runs a mess check and speaks the verdict.
+- "Wall-Eye, how does it look?" - repeats the latest verdict.
+- "Wall-Eye, what time is it?" - the classics work too.
 - Anything else after the name becomes a chat message, answered in the chat
   panel and spoken aloud.
 
@@ -295,7 +307,7 @@ python -m pytest tests -q
   must hold that many checks in a row before the first alert).
 - **Wake word does not react** - it needs the optional packages
   (`pip install faster-whisper sounddevice`) and the checkbox enabled in
-  Settings; say the name and the request in one sentence ("the robot voiceye, check
+  Settings; say the name and the request in one sentence ("Wall-Eye, check
   the room"). The first use downloads the speech model, so give it a
   minute.
 - **Cute voice sounds like the plain system voice** - install the optional

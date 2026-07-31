@@ -31,3 +31,7 @@ config.yaml
 
 # Downloaded TTS model files
 models/
+
+# PyInstaller output
+build/
+dist/

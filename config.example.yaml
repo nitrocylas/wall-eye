@@ -1,5 +1,5 @@
 # Wall-Eye configuration
-# Edit this file, then right-click the tray icon -> "Reload config" (or restart).
+# Edit this file, then hit "Reload config" on the Settings tab (or restart).
 
 ollama:
   url: http://127.0.0.1:11434
@@ -42,7 +42,7 @@ ollama:
 #
 # A task may watch SEVERAL cameras at once — set its `camera:` to a list:
 #     camera: [main, wallcam]
-# Each camera is checked with its own reference photo (Retake reference
+# Each camera is checked with its own reference photo (the Retake button
 # saves one per camera, refs/<task>__<camera>.jpg) and the verdicts are
 # merged: it alerts if ANY angle sees mess, and items are labelled with
 # the camera they came from ("wallcam: pile of dishes").
@@ -84,7 +84,7 @@ voice:
   rate: 175                     # words per minute (system voice only)
   # kokoro_voice: af_heart      # OPTIONAL - Kokoro voice id for cute/robot
 
-# Optional voice wake word: say "the robot voiceye, what do you see?" out loud and the
+# Optional voice wake word: say "Wall-Eye, what do you see?" out loud and the
 # app answers through its voice. Fully local (mic -> faster-whisper on this
 # PC); nothing is sent anywhere. Needs two extra packages:
 #     pip install faster-whisper sounddevice
@@ -106,7 +106,7 @@ listen:
 #   prompt           plain English: what should trigger an alert
 #   interval_minutes how often to check
 #   reference        true = compare against a saved "normal" photo
-#                    (take it via tray menu: Retake reference)
+#                    (take it with the Retake button on the Watch tab)
 #   cooldown_minutes minimum time between repeat alerts for this task
 #   speak            say the alert out loud
 #   priority         ntfy priority: min|low|default|high|urgent

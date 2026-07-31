@@ -6,6 +6,7 @@ Start with:  pythonw app.py     (no console window)
 import datetime as dt
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -72,7 +73,21 @@ class WallEye:
 
     def load_config(self):
         paths.ensure_config()   # first run: copy config.example.yaml into place
-        self.cfg = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
+        loaded = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
+        self.cfg = loaded if isinstance(loaded, dict) else {}
+        # hand-emptied sections ("ollama:" with nothing under it) load as None;
+        # coerce so lookups don't crash on a hand-edited config
+        for sec, empty in (("cameras", {}), ("ollama", {}), ("alerts", {}),
+                           ("voice", {}), ("listen", {}), ("ui", {}),
+                           ("tasks", []), ("reminders", [])):
+            if self.cfg.get(sec) is None:
+                self.cfg[sec] = empty
+        for sec in ("cameras", "ollama"):
+            if not self.cfg[sec]:
+                msg = (f"config.yaml has no '{sec}:' section - restore it "
+                       "from config.example.yaml")
+                log.warning(msg)
+                notify.toast(APP_NAME, msg)
         now = time.time()
         # First check 10s after start, then on each task's own interval
         self.next_due = {t["name"]: now + 10 for t in self.tasks()}
@@ -86,33 +101,56 @@ class WallEye:
 
     def load_state(self):
         if STATE_FILE.exists():
-            self.state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            # a corrupt file (e.g. power cut mid-write) must not brick startup:
+            # set it aside and start fresh
+            try:
+                loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+                if not isinstance(loaded, dict):
+                    raise ValueError("state.json is not a JSON object")
+                self.state = loaded
+            except (ValueError, OSError) as e:
+                log.warning("state.json unreadable (%s) - starting fresh", e)
+                try:
+                    STATE_FILE.replace(STATE_FILE.with_suffix(".json.bad"))
+                except OSError:
+                    pass
         self.state.setdefault("last_alert", {})
         self.state.setdefault("snooze_until", 0)
         self.state.setdefault("reminders_fired", {})
         self.state.setdefault("alert_streak", {})   # task -> consecutive alert count
 
     def save_state(self):
-        STATE_FILE.write_text(json.dumps(self.state), encoding="utf-8")
+        # write-then-rename so a crash mid-write can't leave half a file
+        tmp = STATE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self.state), encoding="utf-8")
+        os.replace(tmp, STATE_FILE)
 
     # ---------- alert gating ----------
 
     @staticmethod
-    def _qh_time(v):
+    def _qh_time(v, fallback=None):
         """quiet-hours value -> dt.time. YAML turns an unquoted '22:30' into the
-        base-60 int 1350, so accept both int and 'HH:MM' string."""
-        if isinstance(v, int):
-            return dt.time(v // 60, v % 60)
-        h, _, m = str(v).partition(":")
-        return dt.time(int(h or 0), int(m or 0))
+        base-60 int 1350, so accept both int and 'HH:MM' string. Hand-edited
+        garbage ("8pm", "25:00") gets a warning + fallback instead of killing
+        alert delivery."""
+        try:
+            if isinstance(v, int):
+                return dt.time(v // 60, v % 60)
+            h, _, m = str(v).partition(":")
+            return dt.time(int(h or 0), int(m or 0))
+        except ValueError:
+            log.warning("bad quiet_hours value %r (want \"HH:MM\") - ignored", v)
+            return fallback
 
     def in_quiet_hours(self):
         qh = self.cfg.get("alerts", {}).get("quiet_hours")
-        if not qh:
+        if not qh or len(qh) < 2:
             return False
         now = dt.datetime.now().time()
         start = self._qh_time(qh[0])
         end = self._qh_time(qh[1])
+        if start is None or end is None:
+            return False   # unparseable window -> keep alerting
         if start <= end:
             return start <= now < end
         return now >= start or now < end   # window spans midnight
@@ -122,8 +160,9 @@ class WallEye:
 
     def snooze(self, minutes):
         if minutes is None:  # until tomorrow morning
-            qh = self.cfg.get("alerts", {}).get("quiet_hours", ["22:30", "08:00"])
-            end = self._qh_time(qh[1])
+            qh = self.cfg.get("alerts", {}).get("quiet_hours") or ["22:30", "08:00"]
+            end = (self._qh_time(qh[1], dt.time(8, 0)) if len(qh) > 1
+                   else dt.time(8, 0))
             tomorrow = dt.datetime.combine(
                 dt.date.today() + dt.timedelta(days=1), end)
             self.state["snooze_until"] = tomorrow.timestamp()
@@ -181,7 +220,9 @@ class WallEye:
         if exc:
             prompt += ("\nKNOWN PERMANENT ITEMS - the user has marked these as "
                        "fine, NEVER report them: " + "; ".join(exc))
-        verdict = vision.check(frame, prompt, ref, o["url"], o["model"],
+        verdict = vision.check(frame, prompt, ref,
+                               o.get("url", "http://127.0.0.1:11434"),
+                               o.get("model") or DEFAULT_MODEL,
                                keep_alive=o.get("keep_alive", "30s"),
                                num_ctx=o.get("num_ctx", 2048),
                                max_image_side=o.get("max_image_side", 512),
@@ -387,9 +428,10 @@ class WallEye:
     def _chat(self) -> "chat.Chat":
         if self._chat_obj is None:
             o = self.cfg["ollama"]
-            self._chat_obj = chat.Chat(o["url"],
-                                       o.get("chat_model", o["model"]),
-                                       o.get("num_ctx", 2048))
+            self._chat_obj = chat.Chat(
+                o.get("url", "http://127.0.0.1:11434"),
+                o.get("chat_model") or o.get("model") or DEFAULT_MODEL,
+                o.get("num_ctx", 2048))
         return self._chat_obj
 
     def grab_current(self, cam_name: str = None) -> bytes:

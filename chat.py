@@ -9,8 +9,8 @@ import base64
 
 import errors
 import vision   # reuse the frame downscaler
-# `requests` is imported lazily inside send()/glance() - it adds noticeable
-# import time, and the dashboard builds long before the first chat turn.
+# `requests` is imported lazily inside send() - it adds noticeable import
+# time, and the dashboard builds long before the first chat turn.
 
 SYSTEM = (
     "You are Wall-Eye, a friendly, slightly earnest robot room-watcher. You "
@@ -52,7 +52,6 @@ class Chat:
         self.num_ctx = num_ctx
         self.base_system = SYSTEM
         self._memory_facts = []
-        self._screen_notes = []
         self.history = [{"role": "system", "content": SYSTEM}]
 
     def _rebuild_system(self):
@@ -61,13 +60,6 @@ class Chat:
             bullets = "\n".join(f"- {f}" for f in self._memory_facts)
             content += ("\n\nThings the user has asked you to remember:\n"
                         + bullets + "\nBring these up naturally when relevant.")
-        if self._screen_notes:
-            notes = "\n".join(f"- {n}" for n in self._screen_notes)
-            content += ("\n\nLIVE SCREEN SHARE is ON - you have been watching "
-                        "the user's screen. Your recent observations (oldest "
-                        "first):\n" + notes +
-                        "\nUse these to discuss what they're doing, but don't "
-                        "recite them unprompted.")
         self.history[0]["content"] = content
 
     def update_memory(self, facts):
@@ -77,43 +69,6 @@ class Chat:
         Call before each ``send``."""
         self._memory_facts = list(facts or [])
         self._rebuild_system()
-
-    def set_screen_context(self, notes):
-        """Rolling notes from the live screen observer - what Wall-Eye has been
-        seeing on the user's display. Empty list turns the context off."""
-        self._screen_notes = list(notes or [])
-        self._rebuild_system()
-
-    def glance(self, image_jpeg, keep_alive="30m", timeout=90,
-               max_image_side=1024):
-        """A STATELESS look at one screenshot: returns a 1-2 sentence note of
-        what's happening on screen. Doesn't touch the conversation history -
-        the observer calls this periodically while screen share is live (which
-        also keeps the model resident in VRAM)."""
-        import requests
-        small, _ = vision._downscale_jpeg(image_jpeg, max_image_side)
-        r = requests.post(
-            f"{self.url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system",
-                     "content": "You observe the user's screen. In 1-2 short "
-                                "sentences, note what they are doing / looking "
-                                "at right now. Plain factual note, no advice."},
-                    {"role": "user", "content": "What's on screen right now?",
-                     "images": [base64.b64encode(small).decode()]},
-                ],
-                "stream": False,
-                **_extra_payload(self.model),
-                "options": {"temperature": 0.3, "num_ctx": self.num_ctx,
-                            "num_predict": 90},
-                "keep_alive": keep_alive,
-            },
-            timeout=timeout,
-        )
-        r.raise_for_status()
-        return r.json()["message"]["content"].strip()
 
     def send(self, text, image_jpeg=None, keep_alive="24h", timeout=120,
              max_image_side=512):

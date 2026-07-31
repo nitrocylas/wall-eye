@@ -1,6 +1,6 @@
 """Optional voice wake word for Wall-Eye.
 
-Say "Wall-E, what do you see?" out loud and the app answers through its
+Say "Wall-Eye, what do you see?" out loud and the app answers through its
 configured voice. Everything runs locally:
 
     mic -> energy gate -> faster-whisper transcription -> wake-phrase match
@@ -21,6 +21,8 @@ from collections import deque
 
 import numpy as np
 
+import speech
+
 log = logging.getLogger("walleye")
 
 SAMPLE_RATE = 16000
@@ -28,10 +30,12 @@ BLOCK_SECS = 0.1        # mic is read in 100 ms blocks
 SILENCE_RMS = 0.01      # RMS below this counts as silence
 SILENCE_SECS = 1.0      # stop recording after this much trailing silence
 MAX_SECS = 10           # hard cap on a single utterance
+NO_SPEECH_SECS = 4.0    # give up a follow-up recording if nobody speaks
 PREROLL_BLOCKS = 3      # blocks kept from just before speech is detected, so
-                        # the first syllable of "Wall-E" isn't clipped off
-ACK_SETTLE_SECS = 0.4   # brief pause after the spoken "Yes?" so the mic does
-                        # not pick the acknowledgement itself up
+                        # the first syllable of "Wall-Eye" isn't clipped off
+ACK_SETTLE_SECS = 0.4   # extra pause after our own "Yes?" finishes playing
+ACK_MAX_WAIT_SECS = 10  # cap on waiting for our own voice to finish
+MAX_CONSECUTIVE_ERRORS = 5  # mic failures in a row before the listener quits
 
 DEPS_HINT = ("voice wake word disabled - pip install faster-whisper "
              "sounddevice")
@@ -69,7 +73,7 @@ def record_until_silence():
     started_talking = False
     with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
                         dtype="float32") as stream:
-        for _ in range(int(MAX_SECS / BLOCK_SECS)):
+        for i in range(int(MAX_SECS / BLOCK_SECS)):
             block, _overflow = stream.read(chunk_len)
             block = block[:, 0]
             chunks.append(block)
@@ -81,6 +85,8 @@ def record_until_silence():
                 silent_chunks += 1
                 if silent_chunks * BLOCK_SECS >= SILENCE_SECS:
                     break
+            elif (i + 1) * BLOCK_SECS >= NO_SPEECH_SECS:
+                break   # nobody answered - don't hold the mic the full cap
     return np.concatenate(chunks) if chunks else np.zeros(1, np.float32)
 
 
@@ -95,7 +101,7 @@ def transcribe(audio, model_name="base.en"):
 # Pure text logic (unit-tested, no audio involved)
 # ---------------------------------------------------------------------------
 
-# Every way Whisper tends to render the name "Wall-E" in a transcript.
+# Every way Whisper tends to render the name "Wall-Eye" in a transcript.
 # "wali"/"walli"/"wall i" are real Whisper renderings of the spoken name
 # (observed in live testing as "WALI, what time is it?").
 DEFAULT_ALIASES = ("wall-e", "wall e", "walle", "wally", "wall-eye",
@@ -105,7 +111,7 @@ DEFAULT_ALIASES = ("wall-e", "wall e", "walle", "wally", "wall-eye",
 def _norm_tokens(text):
     """Lowercase, delete punctuation and split into word tokens, so matching
     is case- and punctuation-insensitive. Punctuation is REMOVED (not spaced)
-    so "what's" -> "whats" and "Wall-E" -> "walle" - the same normalization
+    so "what's" -> "whats" and "Wall-Eye" -> "walleye" - the same normalization
     is applied to the aliases, keeping both sides consistent."""
     return re.sub(r"[^\w\s]", "", (text or "").lower()).split()
 
@@ -115,9 +121,9 @@ def extract_wake_command(text, aliases=DEFAULT_ALIASES):
 
     Returns:
         str   the command after the wake phrase (may follow it mid-sentence:
-              "hey wall-e do X" -> "do x"; the result is normalized to
+              "hey wall-eye do X" -> "do x"; the result is normalized to
               lowercase words)
-        ""    the utterance is ONLY the wake phrase ("Wall-E?")
+        ""    the utterance is ONLY the wake phrase ("Wall-Eye?")
         None  no wake phrase present
 
     When aliases overlap ("wally" vs "wally e") the longest match at the
@@ -236,27 +242,33 @@ def _deps_available():
 
 
 class WakePhraseListener:
-    """Daemon thread that listens for "Wall-E, <command>" on the default mic.
+    """Daemon thread that listens for "Wall-Eye, <command>" on the default mic.
 
     Cheap while idle: the mic is read in 100 ms blocks and only an RMS energy
     check runs until someone actually speaks. On speech it records until
     silence, transcribes locally with faster-whisper, and looks for the wake
     phrase in the transcript:
 
-      * "Wall-E, what do you see?"  -> on_command(*parse_command("what do you see"))
-      * "Wall-E?" (nothing after)   -> speak_fn("Yes?"), then one follow-up
-                                       utterance is recorded as the command
-      * no wake phrase              -> ignored entirely
+      * "Wall-Eye, what do you see?" -> on_command(*parse_command("what do you see"))
+      * "Wall-Eye?" (nothing after)  -> speak_fn("Yes?"), then one follow-up
+                                        utterance is recorded as the command
+      * no wake phrase               -> ignored entirely
 
-    Every failure is logged and swallowed - voice input is a convenience and
-    must never take the app down. start() is a no-op (with a hint in the log)
-    when faster-whisper / sounddevice are not installed.
+    Anything heard while the app itself is talking (speech.is_speaking()) is
+    ignored, so the voice coming out of the speakers can't wake or answer
+    itself. Every failure is logged and swallowed - voice input is a
+    convenience and must never take the app down - but after
+    MAX_CONSECUTIVE_ERRORS mic failures in a row the listener gives up and
+    reports through on_stopped instead of retrying forever. start() is a
+    no-op (with a hint in the log) when faster-whisper / sounddevice are not
+    installed.
     """
 
     def __init__(self, on_command, speak_fn=None, model_name="base.en",
-                 aliases=DEFAULT_ALIASES):
+                 aliases=DEFAULT_ALIASES, on_stopped=None):
         self.on_command = on_command    # callback: (command, arg) -> None
         self.speak_fn = speak_fn        # optional: (text) -> None acknowledgements
+        self.on_stopped = on_stopped    # optional: (reason) -> None on give-up
         self.model_name = model_name
         self.aliases = tuple(aliases) if aliases else DEFAULT_ALIASES
         self._run = False
@@ -277,7 +289,7 @@ class WakePhraseListener:
         self._thread.start()
         # Warm whisper so the first command isn't slow.
         threading.Thread(target=self._warm, daemon=True).start()
-        log.info("voice wake word ready - say 'Wall-E, ...'")
+        log.info("voice wake word ready - say 'Wall-Eye, ...'")
 
     def stop(self):
         """Ask the listener thread to finish. It exits after its current mic
@@ -293,14 +305,29 @@ class WakePhraseListener:
             log.exception("whisper model preload failed")
 
     def _loop(self):
+        failures = 0
         while self._run:
             try:
                 audio = self._wait_and_record()
                 if audio is None:
                     continue
+                failures = 0
                 self._handle_utterance(audio)
             except Exception:
                 log.exception("wake word listener error")
+                failures += 1
+                if failures >= MAX_CONSECUTIVE_ERRORS:
+                    # broken/blocked mic: stop instead of retrying forever
+                    self._run = False
+                    msg = ("wake word stopped: the microphone keeps failing "
+                           "(is it connected and allowed?)")
+                    log.error(msg)
+                    if self.on_stopped:
+                        try:
+                            self.on_stopped(msg)
+                        except Exception:
+                            log.exception("wake word stop callback failed")
+                    return
                 time.sleep(1)   # don't spin on a persistent mic error
 
     def _wait_and_record(self):
@@ -320,6 +347,11 @@ class WakePhraseListener:
                 block = block[:, 0]
                 rms = float(np.sqrt(np.mean(block ** 2)))
                 if rms >= SILENCE_RMS:
+                    if speech.is_speaking():
+                        # that's our own voice out of the speakers, not the
+                        # user - keep idling until playback ends
+                        preroll.clear()
+                        continue
                     break
                 preroll.append(block)
             # Active phase: record until trailing silence or the cap.
@@ -358,14 +390,24 @@ class WakePhraseListener:
             return
         self.on_command(*parse_command(command_text))
 
+    @staticmethod
+    def _wait_until_quiet():
+        """Block until our own TTS has finished playing (speak() is
+        non-blocking, so returning from speak_fn means nothing) plus a short
+        settle, so the acknowledgement never lands in the open mic."""
+        deadline = time.time() + ACK_MAX_WAIT_SECS
+        while speech.is_speaking() and time.time() < deadline:
+            time.sleep(BLOCK_SECS)
+        time.sleep(ACK_SETTLE_SECS)
+
     def _follow_up(self):
-        """Acknowledge a bare "Wall-E?" and record the command that follows."""
+        """Acknowledge a bare "Wall-Eye?" and record the command that follows."""
         if self.speak_fn:
             try:
                 self.speak_fn("Yes?")
             except Exception:
                 log.exception("acknowledgement speech failed")
-            time.sleep(ACK_SETTLE_SECS)
+            self._wait_until_quiet()
         audio = record_until_silence()
         text = transcribe(audio, self.model_name)
         log.info("follow-up heard: %r", text)

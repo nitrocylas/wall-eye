@@ -1,14 +1,16 @@
 """Wall-Eye voice output.
 
-Three voices, picked by the "voice" key of the config passed to speak():
+Four voices, picked by the "voice" key of the config passed to speak():
 
     off     - no-op.
     system  - any installed pyttsx3/SAPI voice. Optional keys:
                 voice_name: substring matched against installed voice names
                 rate:       words per minute
-    robot  - a fun robotic voice: the system TTS is rendered to a wav file,
-              then post-processed with numpy (pitch shift, ring modulation,
+    robot   - a fun robotic voice: TTS is rendered to a wav file, then
+              post-processed with numpy (pitch shift, ring modulation,
               soft clip, normalize) and played back.
+    cute    - a warm neural voice (optional Kokoro engine; falls back to
+              the system voice when kokoro-onnx isn't installed).
 
 The DSP steps are pure numpy functions so they can be unit-tested without
 any audio hardware. pyttsx3 is imported lazily inside the functions that
@@ -47,7 +49,9 @@ DEFAULT_KOKORO_VOICE = "af_heart"
 
 DEFAULT_RATE_WPM = 180
 
-# Tuning for the "robot" robot voice.
+DOWNLOAD_TIMEOUT_SECS = 30   # per-read socket timeout for model downloads
+
+# Tuning for the robot voice DSP.
 ROBOT_PITCH_FACTOR = 1.3    # resample factor; >1 raises the pitch
 ROBOT_RING_FREQ_HZ = 35.0   # tremolo/ring carrier - low enough to buzz, not warble
 ROBOT_RING_DEPTH = 0.35     # 0 = no effect, 1 = full amplitude swing
@@ -206,10 +210,22 @@ def _models_dir() -> str:
 def _fetch(url: str, dest: str) -> None:
     """Download a model file once, atomically (partial downloads never end
     up under the final name)."""
+    import shutil
     import urllib.request
     log.info("Downloading %s (one-time, this can take a few minutes)", url)
+    try:
+        # tell the user why the voice hasn't started yet - this takes minutes
+        import notify
+        notify.toast("Wall-Eye", "Downloading the voice model (~340 MB), "
+                     "one time. The voice starts when it finishes.")
+    except Exception:
+        pass
     part = dest + ".part"
-    urllib.request.urlretrieve(url, part)
+    # timeout so a stalled connection can't hold the speech lock forever
+    # (urlretrieve has none)
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECS) as r, \
+            open(part, "wb") as f:
+        shutil.copyfileobj(r, f)
     os.replace(part, dest)
 
 
@@ -293,7 +309,7 @@ def resolve_backend(voice: str, kokoro_ok: bool) -> str:
     return "system"
 
 
-def _speak_wall_e(text: str, cfg: dict, use_kokoro: bool = False) -> None:
+def _speak_robot(text: str, cfg: dict, use_kokoro: bool = False) -> None:
     """Render TTS, run the robot DSP chain, and play the result."""
     if use_kokoro:
         samples, sr = _synth_kokoro(text, cfg)
@@ -351,6 +367,12 @@ def _play_wav(path: str) -> None:
 _speaking = threading.Lock()
 
 
+def is_speaking() -> bool:
+    """True while a speak() worker is still synthesizing or playing. Lets the
+    wake-word listener ignore the app's own voice coming out of the speakers."""
+    return _speaking.locked()
+
+
 def speak(text: str, cfg: dict) -> bool:
     """Say `text` using the configured voice. Non-blocking.
 
@@ -391,14 +413,24 @@ def speak(text: str, cfg: dict) -> bool:
             if backend == "cute":
                 _speak_cute(text, cfg)
             elif backend == "robot-kokoro":
-                _speak_wall_e(text, cfg, use_kokoro=True)
+                _speak_robot(text, cfg, use_kokoro=True)
             elif backend == "robot-system":
-                _speak_wall_e(text, cfg)
+                _speak_robot(text, cfg)
             else:
                 _speak_system(text, cfg)
         except Exception as exc:
             # Voice output is a convenience; never let it take the app down.
             log.warning("Speech failed: %s", exc)
+            if backend in ("cute", "robot-kokoro"):
+                # Kokoro installed but broken (e.g. bad onnxruntime) must not
+                # mean total silence - fall back to the platform TTS
+                try:
+                    if backend == "robot-kokoro":
+                        _speak_robot(text, cfg)
+                    else:
+                        _speak_system(text, cfg)
+                except Exception as exc2:
+                    log.warning("Fallback voice failed too: %s", exc2)
         finally:
             _speaking.release()
 

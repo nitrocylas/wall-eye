@@ -1,6 +1,6 @@
 """Quick-capture notes - a timestamped scratchpad, newest first.
 
-Deliberately dumber than the memory bank: memory is what Wall-Eye should *know*;
+Deliberately dumber than chat memory: memory is what Wall-Eye should *know*;
 notes are what YOU jotted down. Same crash-safe JSON pattern as the checklists.
 """
 import itertools

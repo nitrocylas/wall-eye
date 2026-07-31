@@ -43,7 +43,7 @@ import vision
 import wakeword
 from app import WallEye
 from paths import (REFS, CONFIG_FILE, APP_NAME, VERSION, TODO_FILE,
-                   SHOPPING_FILE, NOTES_FILE, HABITS_FILE)
+                   SHOPPING_FILE, NOTES_FILE, HABITS_FILE, ICON_FILE)
 
 
 def _esc(text):
@@ -59,13 +59,21 @@ def _fmt_next(when):
     return t if when.date() == now.date() else f"{when.strftime('%a')} {t}"
 
 
-def _parse_hhmm(v):
+def _parse_hhmm(v, fallback=(0, 0)):
     """(hours, minutes) from a quiet-hours value. YAML parses an unquoted '22:30'
-    as the base-60 int 1350, so accept both the int and the 'HH:MM' string."""
-    if isinstance(v, int):
-        return v // 60, v % 60
-    h, _, m = str(v).partition(":")
-    return int(h or 0), int(m or 0)
+    as the base-60 int 1350, so accept both the int and the 'HH:MM' string.
+    Hand-typed garbage ("8pm", "25:00") falls back instead of crashing startup."""
+    try:
+        if isinstance(v, int):
+            h, m = v // 60, v % 60
+        else:
+            hs, _, ms = str(v).partition(":")
+            h, m = int(hs or 0), int(ms or 0)
+        if 0 <= h < 24 and 0 <= m < 60:
+            return h, m
+    except ValueError:
+        pass
+    return fallback
 
 # ---- themes ----------------------------------------------------------------
 # Each theme is a palette. The color NAMES below are also module globals (set by
@@ -572,6 +580,7 @@ class VoiceBridge(QObject):
     command = Signal(str, object)      # (command, arg) from WakePhraseListener
     reply = Signal(str, str)           # (user_text, model_reply)
     error = Signal(str, str)           # (user_text, error_message)
+    stopped = Signal(str)              # listener gave up (mic broken/blocked)
 
 
 # ---- chat window ----------------------------------------------------------
@@ -1202,13 +1211,14 @@ class Dashboard(QMainWindow):
         self.log_line(f"{APP_NAME} online. Watching "
                       f"{len(engine.tasks())} task(s).")
 
-        # Optional voice wake word ("the robot voiceye, ..."), off by default. The
+        # Optional voice wake word ("Wall-Eye, ..."), off by default. The
         # listener thread reports through VoiceBridge signals so every UI
         # touch happens on the GUI thread.
         self.voice_bridge = VoiceBridge()
         self.voice_bridge.command.connect(self._on_voice_command)
         self.voice_bridge.reply.connect(self._on_voice_reply)
         self.voice_bridge.error.connect(self._on_voice_error)
+        self.voice_bridge.stopped.connect(self._on_wake_stopped)
         self.wake_listener = None
         self._voice_speak_next_check = False
         if (engine.cfg.get("listen") or {}).get("enabled", False):
@@ -2282,17 +2292,27 @@ class Dashboard(QMainWindow):
         grid.setColumnStretch(1, 1)
 
         grid.addWidget(fl("AI model"), 0, 0)
+        # Editable: pick any model installed in Ollama, or type a name. The
+        # list is refreshed from Ollama's /api/tags in the background.
         self.model_pick = QComboBox()
-        self.model_pick.addItem("qwen3-vl:8b-instruct  (recommended, ~7 GB)",
-                                "qwen3-vl:8b-instruct")
-        self.model_pick.addItem("qwen2.5vl:3b  (smallest, ~3 GB)", "qwen2.5vl:3b")
+        self.model_pick.setEditable(True)
+        self.model_pick.setInsertPolicy(QComboBox.NoInsert)
+        self.model_pick.setToolTip(
+            "Any vision-capable Ollama model works. The list shows what is "
+            "installed; type a name and press Enter to use something else "
+            "(see 'Choosing a model' in the README).")
         cur_model = self.engine.cfg.get("ollama", {}).get(
             "model", "qwen3-vl:8b-instruct")
-        mi = self.model_pick.findData(cur_model)
-        self.model_pick.setCurrentIndex(mi if mi >= 0 else 0)
-        self.model_pick.currentIndexChanged.connect(
-            lambda _: self._on_model_changed(self.model_pick.currentData()))
+        self._fill_model_pick([], cur_model)
+        self.model_pick.activated.connect(
+            lambda _: self._on_model_changed(
+                self.model_pick.currentText().strip()))
+        self.model_pick.lineEdit().editingFinished.connect(
+            lambda: self._on_model_changed(
+                self.model_pick.currentText().strip()))
         grid.addWidget(self.model_pick, 0, 1)
+        threading.Thread(target=self._refresh_model_list,
+                         daemon=True).start()
 
         grid.addWidget(fl("Keep in VRAM"), 1, 0)
         self.keep_pick = QComboBox()
@@ -2311,13 +2331,15 @@ class Dashboard(QMainWindow):
 
         # Do-Not-Disturb: no spoken/pushed alerts between these times.
         qh = self.engine.cfg.get("alerts", {}).get("quiet_hours") or ["22:30", "08:00"]
+        if len(qh) < 2:
+            qh = ["22:30", "08:00"]
         grid.addWidget(fl("Quiet from"), 2, 0)
-        self.quiet_start = QTimeEdit(QTime(*_parse_hhmm(qh[0])))
+        self.quiet_start = QTimeEdit(QTime(*_parse_hhmm(qh[0], (22, 30))))
         self.quiet_start.setDisplayFormat("h:mm AP")
         self.quiet_start.timeChanged.connect(self._on_quiet_changed)
         grid.addWidget(self.quiet_start, 2, 1)
         grid.addWidget(fl("Quiet until"), 3, 0)
-        self.quiet_end = QTimeEdit(QTime(*_parse_hhmm(qh[1])))
+        self.quiet_end = QTimeEdit(QTime(*_parse_hhmm(qh[1], (8, 0))))
         self.quiet_end.setDisplayFormat("h:mm AP")
         self.quiet_end.timeChanged.connect(self._on_quiet_changed)
         grid.addWidget(self.quiet_end, 3, 1)
@@ -2401,9 +2423,10 @@ class Dashboard(QMainWindow):
         self.voice_pick.addItem("Robot voice", speech.VOICE_ROBOT)
         self.voice_pick.addItem("Cute voice", speech.VOICE_CUTE)
         self.voice_pick.setToolTip(
-            "System voice uses your OS text-to-speech. Robot voice adds a "
-            "robot effect. Cute voice uses the Kokoro neural TTS "
-            "(pip install kokoro-onnx; the model downloads once). All local.")
+            "System voice uses your OS text-to-speech. Robot voice runs it "
+            "through a pitched-up metallic effect. Cute voice uses the Kokoro "
+            "neural TTS (pip install kokoro-onnx; the model downloads once). "
+            "All local.")
         cur_voice = self.engine.cfg.get("voice", {}).get("voice",
                                                          speech.VOICE_SYSTEM)
         vi = self.voice_pick.findData(cur_voice)
@@ -2417,9 +2440,9 @@ class Dashboard(QMainWindow):
         g3.addWidget(test_voice, 0, 2)
 
         g3.addWidget(fl("Wake word"), 1, 0)
-        self.listen_chk = QCheckBox("Voice wake word (say 'the robot voiceye, ...')")
+        self.listen_chk = QCheckBox("Voice wake word (say 'Wall-Eye, ...')")
         self.listen_chk.setToolTip(
-            "Always-on local listening: say \"the robot voiceye, what do you see?\" and "
+            "Always-on local listening: say \"Wall-Eye, what do you see?\" and "
             f"{APP_NAME} answers out loud. Nothing leaves this PC.")
         self.listen_chk.setChecked(
             bool((self.engine.cfg.get("listen") or {}).get("enabled", False)))
@@ -2588,17 +2611,28 @@ class Dashboard(QMainWindow):
         yaml.preserve_quotes = True
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             doc = yaml.load(f)
+        # a hand-emptied section ("alerts:" with nothing under it) loads as
+        # None and would break the setdefault(...)[] writes below
+        for sec in ("cameras", "ollama", "voice", "listen", "alerts", "ui"):
+            if sec in doc and doc[sec] is None:
+                doc[sec] = {}
         # mirror the live edits we track
         if "cameras" in self.engine.cfg:
             for k, v in self.engine.cfg["cameras"].items():
                 if k in doc.get("cameras", {}):
                     doc["cameras"][k]["source"] = v.get("source")
-        doc.setdefault("ollama", {})["model"] = self.model_pick.currentData()
+        # currentText, not currentData: items come from addItems() so userData
+        # is always None and would save `model: null`
+        doc.setdefault("ollama", {})["model"] = (
+            self.model_pick.currentText().strip()
+            or self.engine.cfg.get("ollama", {}).get("model")
+            or "qwen3-vl:8b-instruct")
         doc["ollama"]["keep_alive"] = self.keep_pick.currentData()
         for t in doc.get("tasks", []):
             if t.get("enabled", True):
                 t["interval_minutes"] = self.interval_spin.value()
-        # voice choice (off / system / robot); rate & voice_name stay hand-edited
+        # voice choice (off / system / robot / cute); rate & voice_name stay
+        # hand-edited
         vcfg = self.engine.cfg.get("voice", {})
         if "voice" in vcfg:
             doc.setdefault("voice", {})["voice"] = vcfg["voice"]
@@ -2610,9 +2644,11 @@ class Dashboard(QMainWindow):
         if self.engine.cfg.get("alerts", {}).get("quiet_hours"):
             from ruamel.yaml.scalarstring import DoubleQuotedScalarString as _DQ
             qh = self.engine.cfg["alerts"]["quiet_hours"]
-            # quote them so YAML keeps 'HH:MM' as a string (unquoted 22:30 -> 1350)
+            # quote them so YAML keeps 'HH:MM' as a string (unquoted 22:30 -> 1350);
+            # unparseable hand-typed values pass through untouched
             doc["alerts"]["quiet_hours"] = [
-                _DQ("%02d:%02d" % _parse_hhmm(x)) for x in qh]
+                _DQ("%02d:%02d" % hm) if (hm := _parse_hhmm(x, None)) else _DQ(str(x))
+                for x in qh]
         # phone-push topic (Settings tab)
         if "ntfy_topic" in self.engine.cfg.get("alerts", {}):
             doc["alerts"]["ntfy_topic"] = self.engine.cfg["alerts"]["ntfy_topic"]
@@ -2641,11 +2677,45 @@ class Dashboard(QMainWindow):
         self._save_config()
         self.log_line(f"Check interval set to every {mins} min.")
 
+    def _fill_model_pick(self, installed, current):
+        """Rebuild the model dropdown: recommended defaults first, then
+        whatever Ollama reports as installed, keeping the current choice."""
+        names = []
+        for n in (["qwen3-vl:8b-instruct", "qwen2.5vl:3b"] + installed
+                  + [current]):
+            if n and n not in names:
+                names.append(n)
+        self.model_pick.blockSignals(True)
+        self.model_pick.clear()
+        self.model_pick.addItems(names)
+        self.model_pick.setCurrentText(current)
+        self.model_pick.blockSignals(False)
+
+    def _refresh_model_list(self):
+        """Background fetch of installed Ollama models for the dropdown."""
+        try:
+            import requests
+            url = self.engine.cfg.get("ollama", {}).get(
+                "url", "http://127.0.0.1:11434")
+            r = requests.get(f"{url}/api/tags", timeout=4)
+            r.raise_for_status()
+            installed = sorted(m.get("name", "")
+                               for m in r.json().get("models", []))
+        except Exception:
+            return                        # Ollama down - defaults stay
+        current = self.engine.cfg.get("ollama", {}).get(
+            "model", "qwen3-vl:8b-instruct")
+        QTimer.singleShot(0, lambda: self._fill_model_pick(installed, current))
+
     def _on_model_changed(self, m):
+        if not m:
+            return
         old = self.engine.cfg.setdefault("ollama", {}).get("model")
+        if m == old:
+            return
         self.engine.cfg["ollama"]["model"] = m
         self._save_config()
-        if old and old != m:
+        if old:
             vision.unload(old, self.engine.cfg["ollama"].get("url",
                           "http://127.0.0.1:11434"))   # free the old one now
         self.log_line(f"AI model set to {m}.")
@@ -2693,7 +2763,7 @@ class Dashboard(QMainWindow):
 
     # ---------- voice wake word ----------
     def _start_wake_listener(self):
-        """Create + start the always-on 'the robot voiceye, ...' listener. Safe when the
+        """Create + start the always-on 'Wall-Eye, ...' listener. Safe when the
         optional deps are missing (it logs a hint and stays off)."""
         if self.wake_listener is not None:
             self.wake_listener.stop()
@@ -2705,10 +2775,11 @@ class Dashboard(QMainWindow):
             on_command=self.voice_bridge.command.emit,   # thread-safe signal
             speak_fn=self._say,
             model_name=lst.get("whisper_model", "base.en"),
-            aliases=aliases)
+            aliases=aliases,
+            on_stopped=self.voice_bridge.stopped.emit)
         self.wake_listener.start()
         if self.wake_listener._thread is not None:
-            self.log_line("Voice wake word on - say \"the robot voiceye, ...\"")
+            self.log_line("Voice wake word on - say \"Wall-Eye, ...\"")
         else:
             self.log_line("Voice wake word needs extras: "
                           "<b>pip install faster-whisper sounddevice</b>")
@@ -2729,7 +2800,7 @@ class Dashboard(QMainWindow):
             self.log_line("Voice wake word off.")
 
     def _on_voice_command(self, command, arg):
-        """A spoken 'the robot voiceye, ...' command, already on the GUI thread."""
+        """A spoken 'Wall-Eye, ...' command, already on the GUI thread."""
         if command == "chat":
             self._voice_chat(arg)
         elif command == "check":
@@ -2774,6 +2845,9 @@ class Dashboard(QMainWindow):
                       f"{APP_NAME}</span><br><span style='color:{TEXT};'>"
                       f"{_esc(reply)}</span>")
         self._say(reply)
+
+    def _on_wake_stopped(self, msg):
+        self.log_line(f"<span style='color:{ALERT};'>{_esc(msg)}</span>")
 
     def _on_voice_error(self, _user, msg):
         self.log_line(f"<span style='color:{ALERT};'>Voice chat failed: "
@@ -3026,7 +3100,7 @@ class Dashboard(QMainWindow):
 
     # ---------- tray ----------
     def _build_tray(self):
-        icon = QIcon(str((CONFIG_FILE.parent / "icon.ico")))
+        icon = QIcon(str(ICON_FILE))
         self.tray = QSystemTrayIcon(icon, self)
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()

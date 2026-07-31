@@ -9,14 +9,26 @@ __version__ = VERSION
 
 if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).parent   # config/refs/state live next to the exe
+    # PyInstaller lands bundled data files in _internal, not next to the exe
+    _BUNDLE = Path(getattr(sys, "_MEIPASS", ROOT))
 else:
     ROOT = Path(__file__).parent
+    _BUNDLE = ROOT
+
+
+def _shipped(name: str) -> Path:
+    """A read-only file we ship: prefer a copy next to the exe/source, else
+    the one PyInstaller bundled, so a bare unzipped exe still starts."""
+    local = ROOT / name
+    return local if local.exists() else _BUNDLE / name
+
 
 REFS = ROOT / "refs"
 STATE_FILE = ROOT / "state.json"
 CONFIG_FILE = ROOT / "config.yaml"          # live config; gitignored (it can
                                             # hold the private ntfy topic)
-CONFIG_EXAMPLE = ROOT / "config.example.yaml"   # tracked template
+CONFIG_EXAMPLE = _shipped("config.example.yaml")   # tracked template
+ICON_FILE = _shipped("icon.ico")
 
 
 def ensure_config(config_file: Path = None, example_file: Path = None) -> Path:

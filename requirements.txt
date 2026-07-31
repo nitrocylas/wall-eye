@@ -12,7 +12,7 @@ pyttsx3
 winotify
 psutil
 
-# Optional voice wake word ('Wall-E, ...'):
+# Optional voice wake word ('Wall-Eye, ...'):
 # faster-whisper
 # sounddevice
 # Optional cute neural voice (Kokoro):
