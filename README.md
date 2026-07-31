@@ -135,9 +135,8 @@ Recommendations, roughly by hardware:
 |---|---|---|
 | `qwen3-vl:8b-instruct` | ~7 GB | Recommended default. Strong at telling objects apart and giving per-surface verdicts. Use the `-instruct` tag; bare "thinking" builds can return empty replies. |
 | `qwen2.5vl:3b` | ~3 GB | Best small option; fine for basic mess detection on modest GPUs. |
+| `qwen3-vl:2b-instruct` | ~2 GB | Smallest model that passed testing; see the cheap-hardware section below. |
 | `llava:7b` / `llava:13b` | ~5-9 GB | Widely used alternatives; solid general scene description. |
-| `minicpm-v` | ~5 GB | Compact and quick. |
-| `moondream` | ~2 GB | Tiny; usable for coarse checks on very limited hardware. |
 
 Tips:
 
