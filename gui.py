@@ -130,6 +130,31 @@ def _install_theme(name):
 _install_theme(DEFAULT_THEME)
 
 
+def _arrow_icon_path():
+    """Render a small accent-colored down arrow for combo boxes and return
+    its file path (QSS can only show an arrow through an image url)."""
+    import os
+    import tempfile
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor, QPolygonF
+
+    path = os.path.join(tempfile.gettempdir(),
+                        f"walleye_arrow_{ACCENT.lstrip('#')}.png")
+    if not os.path.exists(path):
+        pm = QPixmap(12, 8)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setBrush(QColor(ACCENT))
+        p.setPen(Qt.NoPen)
+        p.drawPolygon(QPolygonF(
+            [QPointF(1, 1), QPointF(11, 1), QPointF(6, 7)]))
+        p.end()
+        pm.save(path, "PNG")
+    return path.replace("\\", "/")
+
+
 def build_qss():
     """Build the stylesheet from the currently-installed theme globals."""
     return f"""
@@ -201,7 +226,9 @@ QComboBox:hover, QSpinBox:hover, QTimeEdit:hover, QDateEdit:hover {{
                        border-color: {LINE2}; }}
 QComboBox:focus, QSpinBox:focus, QTimeEdit:focus, QDateEdit:focus {{
                        border-color: {ACCENT}; }}
-QComboBox::drop-down {{ border: none; width: 20px; }}
+QComboBox::drop-down {{ border: none; width: 24px; }}
+QComboBox::down-arrow {{ image: url({_arrow_icon_path()});
+        width: 12px; height: 8px; margin-right: 6px; }}
 QComboBox QAbstractItemView {{ background: {PANEL}; border: 1px solid {LINE};
         border-radius: 10px; padding: 5px; outline: none;
         selection-background-color: {ACCENT2}; }}
@@ -1144,9 +1171,13 @@ class RemindersWindow(QWidget):
 
 
 class Dashboard(QMainWindow):
+    # emitted from the model-list fetch thread; queued onto the GUI thread
+    models_fetched = Signal(list)
+
     def __init__(self, engine):
         super().__init__()
         self.engine = engine
+        self.models_fetched.connect(self._on_models_fetched)
         self.cards = {}
         self.todo = checklist.ChecklistStore(TODO_FILE)
         self.shopping = checklist.ChecklistStore(SHOPPING_FILE)
@@ -2703,9 +2734,12 @@ class Dashboard(QMainWindow):
                                for m in r.json().get("models", []))
         except Exception:
             return                        # Ollama down - defaults stay
+        self.models_fetched.emit(installed)
+
+    def _on_models_fetched(self, installed):
         current = self.engine.cfg.get("ollama", {}).get(
             "model", "qwen3-vl:8b-instruct")
-        QTimer.singleShot(0, lambda: self._fill_model_pick(installed, current))
+        self._fill_model_pick(installed, current)
 
     def _on_model_changed(self, m):
         if not m:
