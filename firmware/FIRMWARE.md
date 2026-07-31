@@ -43,16 +43,55 @@ held open. Close live views when you are done with them.
 
 ## Hardware
 
-Any ESP32-S3 board with a camera connector and PSRAM works. A good default is
-the Seeed XIAO ESP32S3 Sense (roughly 10-15 USD, camera included). The pinout
-header (`camera_pins.h`) covers the common boards: XIAO ESP32S3, ESP32S3-EYE,
-AI Thinker ESP32-CAM, M5Stack units, DFRobot FireBeetle 2, and others. Select
-your board's model in `roomcam.ino` where `CAMERA_MODEL_XIAO_ESP32S3` is
-defined.
+You only need this page if you want a cheap dedicated Wi-Fi camera. If you
+have any USB webcam, skip all of this - plug it in and point `config.yaml`
+at device index 0.
+
+Any ESP32-S3 board with a camera connector and PSRAM works. Recommended
+options:
+
+- **Seeed XIAO ESP32S3 Sense** (recommended, roughly 10-15 USD, camera and
+  antenna included, thumb-sized):
+  https://www.seeedstudio.com/XIAO-ESP32S3-Sense-p-5639.html
+- **Freenove ESP32-S3-WROOM CAM board** (a little larger, breadboard
+  friendly, usually 15-20 USD): search "Freenove ESP32-S3 WROOM" on Amazon
+  or at freenove.com - the kit ships with the camera module.
+- An **OV5640 camera module** as an upgrade (about 5-8 USD): the stock
+  OV2640 works fine, but the OV5640 is a 5-megapixel sensor with noticeably
+  better detail - search your parts store for "OV5640 24-pin camera module"
+  and check the ribbon connector matches your board.
+
+Note the plain ESP32 (non-S3) "AI Thinker ESP32-CAM" boards are slower,
+short on RAM for large stills, and lack native USB - the pinout header
+supports them, but an S3 board is worth the couple of extra dollars.
+
+The pinout header (`camera_pins.h`) covers the common boards: XIAO ESP32S3,
+ESP32S3-EYE, AI Thinker ESP32-CAM, M5Stack units, DFRobot FireBeetle 2, and
+others. Select your board's model in `roomcam.ino` where
+`CAMERA_MODEL_XIAO_ESP32S3` is defined.
 
 Both OV2640 and OV5640 sensors work; the firmware defaults to the OV5640's
 maximum still resolution (2592x1944) and falls back gracefully on smaller
 sensors via the `/control?framesize=N` endpoint.
+
+## The whole process in plain English
+
+1. Buy a board (see above). While you wait, install Arduino CLI on your PC.
+2. Plug the board into your PC over USB. It shows up as a serial (COM) port.
+3. Copy `secrets.h.example` to `secrets.h` and type in your Wi-Fi name and
+   password. The build refuses to compile until you do this, so you cannot
+   accidentally flash placeholder credentials.
+4. Compile the firmware and flash it onto the board with the two commands in
+   the next section. This takes a minute or two.
+5. Watch the serial monitor: the camera joins your Wi-Fi and prints its IP
+   address (for example 192.168.1.50). Open `http://<that IP>/` in a browser
+   and you should see a live preview of the room.
+6. In Wall-Eye's `config.yaml`, set the camera `source:` to
+   `http://<that IP>/capture`. Done - the watcher now uses the Wi-Fi camera.
+7. Optional: give the camera a fixed IP in your router's DHCP settings so
+   the address never changes, and mount the board on the wall (a dab of
+   mounting putty works; 3D-printable cases for the XIAO Sense are easy to
+   find on printables.com by searching the board name).
 
 ## Toolchain setup
 

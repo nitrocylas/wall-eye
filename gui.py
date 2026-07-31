@@ -40,6 +40,7 @@ import reminders
 import speech
 import sysmon
 import vision
+import wakeword
 from app import WallEye
 from paths import (REFS, CONFIG_FILE, APP_NAME, VERSION, TODO_FILE,
                    SHOPPING_FILE, NOTES_FILE, HABITS_FILE)
@@ -564,6 +565,13 @@ class SysMonWorker(QThread):
 # ---- bridge engine events onto the Qt thread ------------------------------
 class EventBridge(QObject):
     event = Signal(dict)
+
+
+class VoiceBridge(QObject):
+    """Marshals wake-word callbacks (listener thread) onto the GUI thread."""
+    command = Signal(str, object)      # (command, arg) from WakePhraseListener
+    reply = Signal(str, str)           # (user_text, model_reply)
+    error = Signal(str, str)           # (user_text, error_message)
 
 
 # ---- chat window ----------------------------------------------------------
@@ -1193,6 +1201,18 @@ class Dashboard(QMainWindow):
         self._build_tray()
         self.log_line(f"{APP_NAME} online. Watching "
                       f"{len(engine.tasks())} task(s).")
+
+        # Optional voice wake word ("Wall-E, ..."), off by default. The
+        # listener thread reports through VoiceBridge signals so every UI
+        # touch happens on the GUI thread.
+        self.voice_bridge = VoiceBridge()
+        self.voice_bridge.command.connect(self._on_voice_command)
+        self.voice_bridge.reply.connect(self._on_voice_reply)
+        self.voice_bridge.error.connect(self._on_voice_error)
+        self.wake_listener = None
+        self._voice_speak_next_check = False
+        if (engine.cfg.get("listen") or {}).get("enabled", False):
+            self._start_wake_listener()
 
         # Clock ticks on the UI thread (cheap: one setText). The heavier
         # CPU/RAM/GPU sample - which makes an HTTP call to Ollama - runs on a
@@ -2393,6 +2413,19 @@ class Dashboard(QMainWindow):
         test_voice.setObjectName("ghost")
         test_voice.clicked.connect(self._test_voice)
         g3.addWidget(test_voice, 0, 2)
+
+        g3.addWidget(fl("Wake word"), 1, 0)
+        self.listen_chk = QCheckBox("Voice wake word (say 'Wall-E, ...')")
+        self.listen_chk.setToolTip(
+            "Always-on local listening: say \"Wall-E, what do you see?\" and "
+            f"{APP_NAME} answers out loud. Nothing leaves this PC.")
+        self.listen_chk.setChecked(
+            bool((self.engine.cfg.get("listen") or {}).get("enabled", False)))
+        self.listen_chk.stateChanged.connect(self._on_listen_toggled)
+        g3.addWidget(self.listen_chk, 1, 1)
+        listen_hint = QLabel("Needs extras: pip install faster-whisper sounddevice")
+        listen_hint.setObjectName("muted")
+        g3.addWidget(listen_hint, 2, 1)
         lay.addLayout(g3)
 
         section("CONFIG")
@@ -2567,6 +2600,10 @@ class Dashboard(QMainWindow):
         vcfg = self.engine.cfg.get("voice", {})
         if "voice" in vcfg:
             doc.setdefault("voice", {})["voice"] = vcfg["voice"]
+        # voice wake word on/off (Settings tab); other listen keys stay hand-edited
+        lcfg = self.engine.cfg.get("listen") or {}
+        if "enabled" in lcfg:
+            doc.setdefault("listen", {})["enabled"] = bool(lcfg["enabled"])
         doc.setdefault("alerts", {})["confirm_checks"] = self.confirm_spin.value()
         if self.engine.cfg.get("alerts", {}).get("quiet_hours"):
             from ruamel.yaml.scalarstring import DoubleQuotedScalarString as _DQ
@@ -2651,6 +2688,117 @@ class Dashboard(QMainWindow):
         cfg = dict(self.engine.cfg.get("voice", {}))
         cfg["voice"] = choice
         speech.speak(f"Hello, this is {APP_NAME}. I'm watching the room.", cfg)
+
+    # ---------- voice wake word ----------
+    def _start_wake_listener(self):
+        """Create + start the always-on 'Wall-E, ...' listener. Safe when the
+        optional deps are missing (it logs a hint and stays off)."""
+        if self.wake_listener is not None:
+            self.wake_listener.stop()
+        lst = self.engine.cfg.get("listen") or {}
+        aliases = lst.get("wake_word") or wakeword.DEFAULT_ALIASES
+        if isinstance(aliases, str):
+            aliases = (aliases,)
+        self.wake_listener = wakeword.WakePhraseListener(
+            on_command=self.voice_bridge.command.emit,   # thread-safe signal
+            speak_fn=self._say,
+            model_name=lst.get("whisper_model", "base.en"),
+            aliases=aliases)
+        self.wake_listener.start()
+        if self.wake_listener._thread is not None:
+            self.log_line("Voice wake word on - say \"Wall-E, ...\"")
+        else:
+            self.log_line("Voice wake word needs extras: "
+                          "<b>pip install faster-whisper sounddevice</b>")
+
+    def _stop_wake_listener(self):
+        if self.wake_listener is not None:
+            self.wake_listener.stop()
+            self.wake_listener = None
+
+    def _on_listen_toggled(self, state):
+        enabled = bool(state)
+        self.engine.cfg.setdefault("listen", {})["enabled"] = enabled
+        self._save_config()
+        if enabled:
+            self._start_wake_listener()
+        else:
+            self._stop_wake_listener()
+            self.log_line("Voice wake word off.")
+
+    def _on_voice_command(self, command, arg):
+        """A spoken 'Wall-E, ...' command, already on the GUI thread."""
+        if command == "chat":
+            self._voice_chat(arg)
+        elif command == "check":
+            self._voice_check(arg)
+        elif command == "status":
+            self._say(self._voice_status_text())
+        elif command == "time":
+            self._say(dt.datetime.now().strftime("It's %#I:%M %p."))
+        elif command == "date":
+            self._say(dt.datetime.now().strftime("Today is %A, %B %#d."))
+
+    def _voice_chat(self, text):
+        """Send a spoken message through the chat pipeline; the reply is
+        spoken and shown in both the chat tab and the activity log."""
+        self.log_line(f"<span style='color:{OKGREEN};font-weight:600;'>You "
+                      f"(voice)</span><br><span style='color:{MUTED};'>"
+                      f"{_esc(text)}</span>")
+        self.chat_window._bubble("You (voice)", text, user=True)
+        see = wakeword.wants_to_see(text)
+
+        def worker():
+            img = None
+            if see:
+                try:
+                    img = self._chat_frame()
+                except Exception:
+                    img = None
+            o = self.engine.cfg.get("ollama", {})
+            try:
+                reply = self.chat_window.chat.send(
+                    text, img, keep_alive=o.get("keep_alive", "24h"),
+                    max_image_side=o.get("max_image_side", 512))
+                self.voice_bridge.reply.emit(text, reply)
+            except Exception as e:
+                self.voice_bridge.error.emit(text, str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_voice_reply(self, _user, reply):
+        self.chat_window._bubble(APP_NAME, reply, user=False)
+        self.log_line(f"<span style='color:{ACCENT};font-weight:600;'>"
+                      f"{APP_NAME}</span><br><span style='color:{TEXT};'>"
+                      f"{_esc(reply)}</span>")
+        self._say(reply)
+
+    def _on_voice_error(self, _user, msg):
+        self.log_line(f"<span style='color:{ALERT};'>Voice chat failed: "
+                      f"{_esc(msg)}</span>")
+        self._say("Sorry - I couldn't answer that.")
+
+    def _voice_check(self, task_name):
+        """Spoken 'check' - run the existing check-now path and speak the
+        verdict of the first check event that comes back (see on_event)."""
+        task = self.engine.find_task(task_name) if task_name else None
+        targets = [task] if task else self.engine.tasks()
+        if not targets:
+            self._say("No watch tasks are configured.")
+            return
+        self._voice_speak_next_check = True
+        self._say("Checking now.")
+        for t in targets:
+            self._check_task(t)
+
+    def _voice_status_text(self):
+        """The most recent verdict, phrased for speech."""
+        if self._room_clear is None:
+            return "No check has run yet."
+        if self._room_clear:
+            return "All clear on the last check."
+        detail = self._room_text or "mess was found"
+        return f"The last check found: {detail}."
 
     def _open_chat(self):
         """Bring the window forward and switch to the Chat tab (tray shortcut)."""
@@ -2805,6 +2953,18 @@ class Dashboard(QMainWindow):
             self._room_clear = not ev.get("alert")
             self._room_text = "; ".join(ev.get("items") or []) or ev.get("text", "")
             self._refresh_briefing()
+            # a voice "check" command wants the first verdict spoken back
+            if getattr(self, "_voice_speak_next_check", False):
+                self._voice_speak_next_check = False
+                if ev.get("alert"):
+                    detail = ("; ".join(ev.get("items") or [])
+                              or ev.get("text", "mess was found"))
+                    self._say(f"Mess found: {detail}.")
+                else:
+                    self._say(f"All clear. {ev.get('text', '')}")
+        if kind == "error" and getattr(self, "_voice_speak_next_check", False):
+            self._voice_speak_next_check = False
+            self._say("The check failed - see the activity log.")
         if kind in ("reminder", "reminder_added"):
             self._refresh_briefing()
         if kind == "cleanup":
@@ -2925,6 +3085,7 @@ class Dashboard(QMainWindow):
                               QSystemTrayIcon.Information, 2000)
 
     def _quit(self):
+        self._stop_wake_listener()
         self.preview.stop()
         self.sysmon_worker.stop()
         self.engine.stop_event.set()

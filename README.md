@@ -54,9 +54,11 @@ in your PC running a free local vision model through
   welcome - see CONTRIBUTING.md)
 - Python 3.11+
 - [Ollama](https://ollama.com) running locally with a vision model
-- A camera: any USB webcam, an IP camera that serves a still or stream, a
-  phone running an IP-webcam app, or an ESP32-S3 camera board flashed with
-  the included firmware (see below)
+- A camera. **Any camera that plugs into the PC works out of the box** - a
+  USB webcam needs zero extra hardware or flashing; set `source: 0` in the
+  config and you are done. Also supported: IP cameras that serve a still or
+  stream, a phone running an IP-webcam app, or (optionally) a cheap ESP32-S3
+  camera board flashed with the included firmware (see below)
 - A GPU is strongly recommended - see Limitations
 
 ## Quick start
@@ -161,6 +163,32 @@ If your camera module ships without an IR-cut filter (hazy, magenta-tinted
 image), run `tools/enhance_proxy.py` between the camera and Wall-Eye - it
 serves a corrected image at `http://127.0.0.1:8090/capture`.
 
+## Talking to Wall-Eye
+
+Optional, off by default, and fully local: enable the voice wake word (on
+the Settings tab, or `listen.enabled` in `config.yaml`) and Wall-Eye
+listens for its name through your microphone. Speech recognition runs on
+your PC with faster-whisper; audio never leaves the machine.
+
+```
+pip install faster-whisper sounddevice
+```
+
+Then just talk to it:
+
+- "Wall-E, what do you see?" - it looks through the camera and describes
+  the room out loud.
+- "Wall-E, check the room" - runs a mess check and speaks the verdict.
+- "Wall-E, how does it look?" - repeats the latest verdict.
+- "Wall-E, what time is it?" - the classics work too.
+- Anything else after the name becomes a chat message, answered in the chat
+  panel and spoken aloud.
+
+It answers in whichever voice you picked in settings - including the
+robot-styled "wall-e" voice, which is obviously the correct choice.
+"Wally", "wall eye" and similar pronunciations are recognized as the wake
+word; say the name, then the request, in one sentence.
+
 ## Phone notifications
 
 Wall-Eye pushes alerts through [ntfy](https://ntfy.sh), which is free and
@@ -254,9 +282,11 @@ python -m pytest tests -q
 - **AI output is not fact.** Alert summaries and chat replies are generated
   by a local language model and can be wrong, odd, or overconfident. Treat
   them as hints, not records.
-- **Hardware flashing is at your own risk.** Flashing the ESP32 firmware can
-  brick a board if interrupted or applied to incompatible hardware. Check
-  your board's pinout before flashing.
+- **Hardware flashing (ESP32 route only).** This applies only if you choose
+  the optional ESP32 camera: flashing firmware can brick a board if
+  interrupted or applied to incompatible hardware, so check your board's
+  pinout first. If you use a USB webcam or IP camera, no flashing is
+  involved and this bullet does not concern you.
 - **No affiliation.** Wall-Eye is a hobby project. It is not affiliated with,
   endorsed by, or connected to Disney/Pixar (WALL-E is their trademark and
   this project only borrows an affectionate pun), nor with Ollama, Alibaba

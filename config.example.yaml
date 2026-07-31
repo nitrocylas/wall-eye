@@ -80,6 +80,20 @@ voice:
                                 # off     = no spoken alerts
   rate: 175                     # words per minute
 
+# Optional voice wake word: say "Wall-E, what do you see?" out loud and the
+# app answers through its voice. Fully local (mic -> faster-whisper on this
+# PC); nothing is sent anywhere. Needs two extra packages:
+#     pip install faster-whisper sounddevice
+listen:
+  enabled: false                # also toggleable on the Settings tab
+  whisper_model: base.en        # speech-to-text model. tiny.en is the
+                                # fastest option (less accurate); base.en is
+                                # a good balance. Downloaded once on first use.
+  # wake_word:                  # OPTIONAL - override the accepted names.
+  # - wall-e                    # Defaults already cover "wall-e", "wall e",
+  # - wally                     # "walle", "wally", "wall-eye", "wall eye"
+                                # and "wally e".
+
 # ---------------------------------------------------------------------------
 # Watch tasks. Each one is checked on its own schedule with its own prompt.
 #   name             unique id (used for reference photo filename + snooze)

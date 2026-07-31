@@ -11,3 +11,7 @@ pystray
 pyttsx3
 winotify
 psutil
+
+# Optional voice wake word ('Wall-E, ...'):
+# faster-whisper
+# sounddevice
