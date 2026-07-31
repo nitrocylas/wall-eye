@@ -1,0 +1,145 @@
+# Wall-Eye configuration
+# Edit this file, then right-click the tray icon -> "Reload config" (or restart).
+
+ollama:
+  url: http://127.0.0.1:11434
+  model: qwen3-vl:8b-instruct   # vision model that judges the room. Smaller
+                                # option: qwen2.5vl:3b (~3 GB) if VRAM is tight.
+                                # Use the -instruct tag: "thinking" builds can
+                                # return empty JSON.
+  chat_model: qwen3-vl:8b-instruct  # model behind the chat panel (vision-capable,
+                                    # so "what do you see" works)
+  ground_model: ""              # OPTIONAL second model used ONLY to place the red
+                                # boxes when mess is found. Leave "" to use the
+                                # main model's own boxes.
+  keep_alive: 5m                # how long the model stays in VRAM after a check.
+                                #   5m  = load, check, free the GPU 5 min later
+                                #   24h = stay loaded the whole time the app runs
+                                #   0   = unload the moment a check finishes
+  num_ctx: 8192                 # context size. Scale WITH max_image_side: a task
+                                # that uses a reference photo sends TWO images,
+                                # so image tokens double.
+  max_image_side: 1024          # frames are downscaled to this before the check
+  verify_items: true            # close-up second pass: re-crop each reported item
+                                # and confirm it before alerting (false-alarm filter)
+  # num_gpu: 0                  # OPTIONAL — model layers on the GPU.
+                                #   (unset) = all on GPU, fastest
+                                #   0       = CPU only, zero VRAM, much slower
+
+# Cameras you can refer to by name in tasks below.
+# source:      a number = USB webcam index (0 is the first one),
+#              or a URL string for an IP camera that serves a still or stream,
+#              e.g. an ESP32 camera at "http://192.168.1.50/capture"
+#              or a phone running an IP-webcam app.
+# description: OPTIONAL — what angle this camera sees, in plain English.
+#              It is fed to the vision model so it can interpret the view
+#              ("overhead view of the whole room", "side view of the desk").
+# zone:        OPTIONAL [x, y, w, h] crop (fractions 0-1) always applied to
+#              this camera — trim off a hallway/window the angle can't avoid.
+#              A task's own `zone:` wins over this when both are set.
+#
+# A task may watch SEVERAL cameras at once — set its `camera:` to a list:
+#     camera: [main, wallcam]
+# Each camera is checked with its own reference photo (Retake reference
+# saves one per camera, refs/<task>__<camera>.jpg) and the verdicts are
+# merged: it alerts if ANY angle sees mess, and items are labelled with
+# the camera they came from ("wallcam: pile of dishes").
+cameras:
+  main:
+    source: 0                   # first USB webcam
+    width: 1280
+    height: 720
+    warmup_frames: 5            # frames to skip while auto-exposure settles
+    description: overhead view of the whole room
+  # wallcam:                    # example ESP32 Wi-Fi camera (see firmware/)
+  #   source: http://192.168.1.50/capture
+  #   warmup_frames: 1          # /capture already returns a fresh frame
+  #   description: wall-mounted wide view of the room
+  #   # If your sensor needs image correction, run tools/enhance_proxy.py and
+  #   # point source at the proxy instead of the camera directly.
+
+alerts:
+  toast: true                   # Windows desktop notification
+  ntfy_topic: ""                # set to a unique topic like "my-room-x7q2k" and
+                                # subscribe to it in the ntfy phone app for push alerts
+  quiet_hours:                  # no alerts between these times (checks still run)
+  - "22:00"
+  - "07:00"
+  confirm_checks: 2             # only alert once a condition holds this many checks
+                                # IN A ROW (kills false alarms from someone briefly
+                                # setting something down or walking past).
+                                # 1 = alert on the very first check. "Check now"
+                                # always answers immediately. Per-task override:
+                                # add `confirm_checks:` to a task below.
+
+voice:
+  voice: system                 # system  = your OS text-to-speech voice
+                                # wall-e  = robot-styled voice effect
+                                # off     = no spoken alerts
+  rate: 175                     # words per minute
+
+# ---------------------------------------------------------------------------
+# Watch tasks. Each one is checked on its own schedule with its own prompt.
+#   name             unique id (used for reference photo filename + snooze)
+#   camera           which camera above to use — one name, or a LIST of names
+#                    to watch several angles at once (alerts if any sees mess)
+#   prompt           plain English: what should trigger an alert
+#   interval_minutes how often to check
+#   reference        true = compare against a saved "normal" photo
+#                    (take it via tray menu: Retake reference)
+#   cooldown_minutes minimum time between repeat alerts for this task
+#   speak            say the alert out loud
+#   priority         ntfy priority: min|low|default|high|urgent
+#   zone             optional [x, y, w, h] crop, fractions 0-1 of the frame
+# ---------------------------------------------------------------------------
+tasks:
+- name: room
+  camera: main
+  # A per-surface sweep plus an explicit decision rule. Without the forced
+  # sweep, vision models tend to find the biggest mess and stop looking;
+  # requiring a verdict for EVERY surface makes the model actually check
+  # each one, and "medium messes count" stops it ignoring cluttered spots.
+  prompt: |
+    Survey this room for mess, surface by surface. You MUST give a verdict for EVERY surface below — either it is clear, or list what is out of place on it. Never skip a surface just because you already found mess elsewhere.
+    - FLOOR: boxes, packages, bags, clothes, shoes, or any object sitting on the floor that is not furniture.
+    - BED: clothes, towels, bags, papers or any objects lying on top of it.
+    - DESK / DRESSER / SHELVES: piles of objects, dishes, cups, bottles, boxes, food or wrappers, and scattered loose items. A surface COVERED in many small loose objects counts as mess (report it as e.g. 'clutter on the desk') even if each object is small. Only a monitor, keyboard and mouse in normal use are NOT clutter.
+    - CHAIRS / ARMCHAIRS: clothes, boxes or any items piled or resting on them.
+    Report ALL messes, not just the worst one: medium messes count too — a cluttered desk top, a stack of boxes on a chair, or several loose items on one surface each belong in 'items'. Put one entry in 'items' per messy thing or messy surface (e.g. 'clothes on the bed', 'clutter on the desk', 'items piled on the armchair'). Look carefully at small and partly-hidden objects, not just the obvious centre of the frame.
+    DECISION RULE: set 'alert' to true if you find TWO OR MORE out-of-place items anywhere, OR any large item left on the floor (e.g. a box or bag). Otherwise set it false. Ignore people and pets entirely.
+  interval_minutes: 30
+  reference: true
+  cooldown_minutes: 30
+  speak: true
+  priority: default
+
+  # --- examples, set "enabled: true" to use ---
+- name: printer
+  enabled: false
+  camera: main
+  prompt: >
+    This is a 3D printer mid-print. Alert IMMEDIATELY if the print has
+    failed: spaghetti-like tangled filament, the print detached from the
+    bed, or the nozzle moving with nothing extruding.
+  interval_minutes: 3
+  reference: false
+  cooldown_minutes: 10
+  speak: true
+  priority: urgent
+
+- name: dog-couch
+  enabled: false
+  camera: main
+  prompt: Alert if there is a dog on the couch.
+  interval_minutes: 2
+  reference: false
+  cooldown_minutes: 15
+  speak: true
+  priority: default
+
+# Plain timed reminders, no camera involved.
+reminders:
+- at: "16:00"
+  message: "Check the 3D print."
+  enabled: false
+  speak: true

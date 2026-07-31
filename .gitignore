@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Wall-Eye runtime data (created next to the app; never commit)
+snapshots/
+refs/
+state.json
+*.log
+last_frame.jpg
+*.json.bak
+todo.json
+shopping.json
+notes.json
+habits.json
+cleanup.json
+reminders.json
+
+# Secrets
+phone_token.txt
+secrets.h
+# The live config is created from config.example.yaml on first run and may
+# contain the private ntfy topic (which acts as a password) — never commit it.
+config.yaml

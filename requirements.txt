@@ -1,0 +1,13 @@
+PySide6
+# opencv-python and Pillow parse camera JPEG/streams (untrusted input) —
+# keep them current; the pins below are known-good minimums.
+opencv-python>=4.8
+Pillow>=10.0
+numpy
+PyYAML
+ruamel.yaml
+requests
+pystray
+pyttsx3
+winotify
+psutil
