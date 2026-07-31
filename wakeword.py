@@ -96,8 +96,10 @@ def transcribe(audio, model_name="base.en"):
 # ---------------------------------------------------------------------------
 
 # Every way Whisper tends to render the name "Wall-E" in a transcript.
+# "wali"/"walli"/"wall i" are real Whisper renderings of the spoken name
+# (observed in live testing as "WALI, what time is it?").
 DEFAULT_ALIASES = ("wall-e", "wall e", "walle", "wally", "wall-eye",
-                   "wall eye", "wally e")
+                   "wall eye", "wally e", "wali", "walli", "wall i")
 
 
 def _norm_tokens(text):

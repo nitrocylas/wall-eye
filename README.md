@@ -23,7 +23,8 @@ in your PC running a free local vision model through
 - **Watch tasks with plain-English prompts** - each task is a prompt checked
   on its own schedule, e.g. "alert if there are two or more out-of-place
   items" or "alert if the 3D print has failed". Per-task camera, interval,
-  cooldown, priority, and optional crop zone.
+  cooldown (`interval_minutes` / `cooldown_minutes`), priority, and optional
+  crop zone.
 - **Mess detection with per-surface reasoning** - the default room task forces
   the model to give a verdict for every surface (floor, bed, desk, chairs)
   instead of finding the biggest mess and stopping, so medium clutter gets

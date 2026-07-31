@@ -57,6 +57,16 @@ class TestExtractWakeCommand:
         assert (extract_wake_command("Wall-Eye, how is the room?")
                 == "how is the room")
 
+    def test_whisper_wali_renderings(self):
+        # Regression: live testing showed Whisper rendering the spoken name
+        # "Wall-Eye" as "WALI" / "WALI," - those transcripts must still wake.
+        assert (extract_wake_command("WALI. What time is it?")
+                == "what time is it")
+        assert (extract_wake_command("WALI, what time is it?")
+                == "what time is it")
+        assert extract_wake_command("Walli, check the room") == "check the room"
+        assert extract_wake_command("wall i status") == "status"
+
     def test_command_is_normalised_lowercase(self):
         assert (extract_wake_command("Wall-E, What's On My Desk?")
                 == "whats on my desk")
