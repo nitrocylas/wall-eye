@@ -3,8 +3,10 @@
 
 ollama:
   url: http://127.0.0.1:11434
-  model: qwen3-vl:8b-instruct   # vision model that judges the room. Smaller
-                                # option: qwen2.5vl:3b (~3 GB) if VRAM is tight.
+  model: qwen3-vl:8b-instruct   # vision model that judges the room. Any
+                                # vision-capable Ollama model works here -
+                                # see "Choosing a model" in the README.
+                                # Smaller option: qwen2.5vl:3b (~3 GB).
                                 # Use the -instruct tag: "thinking" builds can
                                 # return empty JSON.
   chat_model: qwen3-vl:8b-instruct  # model behind the chat panel (vision-capable,

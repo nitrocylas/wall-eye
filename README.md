@@ -82,8 +82,34 @@ engine running in the system tray. To run headless with only the tray icon,
 use `pythonw app.py` instead. `python check_once.py` runs a single check from
 the command line.
 
-If VRAM is tight, `qwen2.5vl:3b` (about 3 GB) also works - set it as
-`ollama.model` in `config.yaml`.
+## Choosing a model
+
+Wall-Eye works with **any vision-capable Ollama model** - the model name in
+`config.yaml` (`ollama.model`) is passed straight to Ollama, so if you have a
+favorite vision model, or a custom fine-tune of your own, drop its name in
+and it will very likely just work. The checks send a frame plus a plain
+English prompt and parse the reply defensively, so nothing in the pipeline
+is tied to one model family.
+
+Recommendations, roughly by hardware:
+
+| Model | VRAM (approx.) | Notes |
+|---|---|---|
+| `qwen3-vl:8b-instruct` | ~7 GB | Recommended default. Strong at telling objects apart and giving per-surface verdicts. Use the `-instruct` tag; bare "thinking" builds can return empty replies. |
+| `qwen2.5vl:3b` | ~3 GB | Best small option; fine for basic mess detection on modest GPUs. |
+| `llava:7b` / `llava:13b` | ~5-9 GB | Widely used alternatives; solid general scene description. |
+| `minicpm-v` | ~5 GB | Compact and quick. |
+| `moondream` | ~2 GB | Tiny; usable for coarse checks on very limited hardware. |
+
+Tips:
+
+- Larger models mostly buy you fewer false alarms and better small-object
+  detection, not new features.
+- `ollama.ground_model` (optional) can name a second model used only to
+  place bounding boxes; leave it empty to use the main model's own boxes.
+- If a model gives chatty or malformed replies, lower `interval_minutes`
+  expectations and try another - the app tolerates imperfect output, but
+  verdict quality is only as good as the model.
 
 ## Configuration highlights
 
@@ -211,6 +237,30 @@ python -m pytest tests -q
   convenience alerts (mess, failed prints, a dog on the couch), not for
   safety-critical monitoring. Expect the occasional false positive or miss,
   and tune with reference photos, `verify_items`, and `confirm_checks`.
+
+## Disclaimers
+
+- **No warranty.** Wall-Eye is provided "as is", without warranty of any
+  kind, per the MIT license. You use it, and the firmware, at your own risk.
+- **Not a safety or security device.** Do not rely on Wall-Eye to protect
+  people, pets, or property, or as a substitute for smoke alarms, baby
+  monitors, medical monitoring, or a security system. It is a convenience
+  tool, and AI vision models make mistakes in both directions: they miss
+  real things and report things that are not there.
+- **You are responsible for legal compliance.** Recording laws, consent
+  requirements, and workplace/tenancy rules differ by country and state.
+  Only monitor spaces you have the right to monitor, and get consent from
+  the people who share them.
+- **AI output is not fact.** Alert summaries and chat replies are generated
+  by a local language model and can be wrong, odd, or overconfident. Treat
+  them as hints, not records.
+- **Hardware flashing is at your own risk.** Flashing the ESP32 firmware can
+  brick a board if interrupted or applied to incompatible hardware. Check
+  your board's pinout before flashing.
+- **No affiliation.** Wall-Eye is a hobby project. It is not affiliated with,
+  endorsed by, or connected to Disney/Pixar (WALL-E is their trademark and
+  this project only borrows an affectionate pun), nor with Ollama, Alibaba
+  (Qwen), or any camera or smart-home vendor.
 
 ## License
 
