@@ -1,8 +1,24 @@
-# Wall-Eye
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="Wall-Eye logo">
+</p>
 
-An open-source, fully local AI room watcher - a cheap ESP32 camera or webcam,
-your own PC, and a local vision model instead of a $50/month cloud
-subscription.
+<h1 align="center">Wall-Eye</h1>
+
+<p align="center">
+  An open-source, fully local AI room watcher.<br>
+  A cheap ESP32 camera or the webcam you already own, your own GPU, and a
+  local vision model - instead of a $50/month cloud subscription.
+</p>
+
+<p align="center">
+  <a href="https://github.com/nitrocylas/wall-eye/actions/workflows/tests.yml"><img src="https://github.com/nitrocylas/wall-eye/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a05a2c" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-e8b434" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/cloud-none-2bb3c8" alt="No cloud">
+  <a href="https://ko-fi.com/nitrocylas"><img src="https://img.shields.io/badge/ko--fi-support-d97e28" alt="Ko-fi"></a>
+</p>
+
+---
 
 Wall-Eye watches your room through a USB webcam or a Wi-Fi camera, asks a
 vision model running on your own machine whether the room is a mess (or
