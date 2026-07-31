@@ -36,6 +36,8 @@ lying around, or an ESP32-S3 camera board that costs about $10, plus the GPU
 in your PC running a free local vision model through
 [Ollama](https://ollama.com). No cloud, no subscription, no account.
 
+also i have adhd i made this because i have a hard time keeping my room tidy so i was like i should have a robot yell at me to clean my room or something so yea
+
 ## Features
 
 - **Watch tasks with plain-English prompts** - each task is a prompt checked
