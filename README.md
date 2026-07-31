@@ -7,7 +7,7 @@
 <p align="center">
   An open-source, fully local AI room watcher.<br>
   A cheap ESP32 camera or the webcam you already own, your own GPU, and a
-  local vision model - instead of a $50/month cloud subscription.
+  local vision model
 </p>
 
 <p align="center">
