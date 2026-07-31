@@ -63,7 +63,9 @@ in your PC running a free local vision model through
   config and you are done. Also supported: IP cameras that serve a still or
   stream, a phone running an IP-webcam app, or (optionally) a cheap ESP32-S3
   camera board flashed with the included firmware (see below)
-- A GPU is strongly recommended - see Limitations
+- A GPU is strongly recommended - see Limitations. Any GPU Ollama supports
+  works: NVIDIA (CUDA), AMD (ROCm), or Apple Silicon - Wall-Eye itself has
+  no GPU-specific code and just talks to Ollama
 
 ## Quick start
 
